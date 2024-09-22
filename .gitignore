@@ -2,3 +2,4 @@ results
 checkpoints
 .idea
 data
+*.egg-info

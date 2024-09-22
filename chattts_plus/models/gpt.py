@@ -10,11 +10,12 @@ import torch.nn.functional as F
 import torch.nn.utils.parametrize as P
 from torch.nn.utils.parametrizations import weight_norm
 from tqdm import tqdm
-from transformers import LlamaModel, LlamaConfig, LogitsWarper
+from transformers import LlamaConfig, LogitsWarper
 from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.utils import is_flash_attn_2_available
 
+from .llama import LlamaModel
 from .processors import CustomRepetitionPenaltyLogitsProcessorRepeat
 
 
@@ -26,36 +27,28 @@ class GPT(nn.Module):
             num_text_tokens: int = 21178,
             num_vq=4,
             use_flash_attn=False,
-            device=torch.device("cpu"),
-            logger=logging.getLogger(__name__),
     ):
         super().__init__()
-
-        self.logger = logger
-
-        self.device = device
-        self.device_gpt = device if "mps" not in str(device) else torch.device("cpu")
 
         self.num_vq = num_vq
         self.num_audio_tokens = num_audio_tokens
 
         self.use_flash_attn = use_flash_attn
 
-        self.gpt, self.llama_config = self._build_llama(gpt_config, self.device_gpt)
+        self.gpt, self.llama_config = self._build_llama(gpt_config)
         self.is_te_llama = False
         self.model_dim = int(self.gpt.config.hidden_size)
         self.emb_code = nn.ModuleList(
             [
                 nn.Embedding(
                     num_audio_tokens,
-                    self.model_dim,
-                    device=self.device_gpt,
+                    self.model_dim
                 )
                 for _ in range(num_vq)
             ],
         )
         self.emb_text = nn.Embedding(
-            num_text_tokens, self.model_dim, device=self.device_gpt
+            num_text_tokens, self.model_dim
         )
 
         self.head_text = weight_norm(
@@ -63,7 +56,6 @@ class GPT(nn.Module):
                 self.model_dim,
                 num_text_tokens,
                 bias=False,
-                device=device,
             ),
             name="weight",
         )
@@ -74,7 +66,6 @@ class GPT(nn.Module):
                         self.model_dim,
                         num_audio_tokens,
                         bias=False,
-                        device=device,
                     ),
                     name="weight",
                 )
@@ -98,7 +89,6 @@ class GPT(nn.Module):
     def _build_llama(
             self,
             config: dict,
-            device: torch.device,
     ) -> Tuple[LlamaModel, LlamaConfig]:
 
         if self.use_flash_attn and is_flash_attn_2_available():
@@ -106,7 +96,7 @@ class GPT(nn.Module):
                 **config,
                 attn_implementation="flash_attention_2",
             )
-            self.logger.warning(
+            print(
                 "enabling flash_attention_2 may make gpt be even slower"
             )
         else:
@@ -114,18 +104,7 @@ class GPT(nn.Module):
 
         model = LlamaModel(llama_config)
         del model.embed_tokens
-
-        return model.to(device), llama_config
-
-    def prepare(self, compile=False):
-        if self.use_flash_attn and is_flash_attn_2_available():
-            self.gpt = self.gpt.to(dtype=torch.float16)
-        if compile and not self.is_te_llama:
-            try:
-                self.compile(backend="inductor", dynamic=True)
-                self.gpt.compile(backend="inductor", dynamic=True)
-            except RuntimeError as e:
-                self.logger.warning(f"compile failed: {e}. fallback to normal mode.")
+        return model, llama_config
 
     def __call__(
             self, input_ids: torch.Tensor, text_mask: torch.Tensor
@@ -141,11 +120,11 @@ class GPT(nn.Module):
         """
 
         emb_text: torch.Tensor = self.emb_text(
-            input_ids[text_mask].narrow(1, 0, 1).squeeze_(1).to(self.device_gpt)
+            input_ids[text_mask].narrow(1, 0, 1).squeeze_(1)
         )
 
-        text_mask_inv = text_mask.logical_not().to(self.device_gpt)
-        masked_input_ids: torch.Tensor = input_ids[text_mask_inv].to(self.device_gpt)
+        text_mask_inv = text_mask.logical_not()
+        masked_input_ids: torch.Tensor = input_ids[text_mask_inv]
 
         emb_code = [
             self.emb_code[i](masked_input_ids[:, i]) for i in range(self.num_vq)
@@ -159,9 +138,6 @@ class GPT(nn.Module):
         )
         emb[text_mask] = emb_text
         emb[text_mask_inv] = emb_code.to(emb.dtype)
-
-        del emb_text, emb_code, text_mask_inv
-
         return emb
 
     @dataclass(repr=False, eq=False)
@@ -389,7 +365,6 @@ class GPT(nn.Module):
             device=inputs_ids.device,
         )
         inputs_ids_buf.narrow(1, 0, progress).copy_(inputs_ids)
-        del inputs_ids
         inputs_ids = inputs_ids_buf.narrow(1, 0, progress)
 
         pbar: Optional[tqdm] = None
@@ -413,8 +388,7 @@ class GPT(nn.Module):
             )
 
             if i > 0:
-                del emb
-                inputs_ids_emb = model_input.input_ids.to(self.device_gpt)
+                inputs_ids_emb = model_input.input_ids.to(emb.device)
                 if infer_text:
                     emb: torch.Tensor = self.emb_text(inputs_ids_emb[:, :, 0])
                 else:
@@ -423,10 +397,9 @@ class GPT(nn.Module):
                         for i in range(self.num_vq)
                     ]
                     emb = torch.stack(code_emb, 3).sum(3)
-                del inputs_ids_emb, model_input.input_ids
             model_input.inputs_embeds = emb
 
-            model_input.to(self.device_gpt, self.gpt.dtype)
+            model_input.to(emb.device, emb.dtype)
 
             outputs: BaseModelOutputWithPast = self.gpt(
                 attention_mask=model_input.attention_mask,
@@ -438,9 +411,7 @@ class GPT(nn.Module):
                 cache_position=model_input.cache_position,
             )
             attentions.append(outputs.attentions)
-            hidden_states = outputs.last_hidden_state.to(
-                self.device, dtype=torch.float
-            )  # 🐻
+            hidden_states = outputs.last_hidden_state
             past_key_values = outputs.past_key_values
             if return_hidden:
                 hiddens.append(hidden_states.narrow(1, -1, 1).squeeze_(1))
@@ -455,15 +426,12 @@ class GPT(nn.Module):
                         hidden_states.size(1),
                         self.num_audio_tokens,
                         self.num_vq,
-                        dtype=torch.float,
-                        device=self.device,
+                        dtype=emb.dtype,
+                        device=emb.device,
                     )
                     for num_vq_iter in range(self.num_vq):
                         x: torch.Tensor = self.head_code[num_vq_iter](hidden_states)
                         logits[..., num_vq_iter] = x
-                        del x
-
-            del hidden_states
 
             # logits = logits[:, -1].float()
             logits = logits.narrow(1, -1, 1).squeeze_(1).float()
@@ -481,8 +449,7 @@ class GPT(nn.Module):
                 logits_token = inputs_ids_sliced.reshape(
                     inputs_ids_sliced.size(0) * inputs_ids_sliced.size(1),
                     -1,
-                ).to(self.device)
-                del inputs_ids_sliced
+                ).to(emb.device)
             else:
                 logits_token = (
                     inputs_ids.narrow(
@@ -491,7 +458,7 @@ class GPT(nn.Module):
                         inputs_ids.size(1) - start_idx,
                     )
                     .narrow(2, 0, 1)
-                    .to(self.device)
+                    .to(emb.device)
                 )
 
             logits /= temperature
@@ -502,53 +469,33 @@ class GPT(nn.Module):
             for logitsWarpers in logits_warpers:
                 logits = logitsWarpers(logits_token, logits)
 
-            del logits_token
-
             if i < min_new_token:
                 logits[:, eos_token] = -torch.inf
 
             scores = F.softmax(logits, dim=-1)
-
-            del logits
-
             idx_next = torch.multinomial(scores, num_samples=1).to(finish.device)
-
-            del scores
 
             if not infer_text:
                 # idx_next = rearrange(idx_next, "(b n) 1 -> b n", n=self.num_vq)
                 idx_next = idx_next.view(-1, self.num_vq)
                 finish_or = idx_next.eq(eos_token).any(1)
                 finish.logical_or_(finish_or)
-                del finish_or
                 inputs_ids_buf.narrow(1, progress, 1).copy_(idx_next.unsqueeze_(1))
             else:
                 finish_or = idx_next.eq(eos_token).any(1)
                 finish.logical_or_(finish_or)
-                del finish_or
                 inputs_ids_buf.narrow(1, progress, 1).copy_(
                     idx_next.unsqueeze_(-1).expand(-1, -1, self.num_vq),
                 )
 
             if i == 0 and finish.any():
-                self.logger.warning(
-                    "unexpected end at index %s",
-                    str([unexpected_idx.item() for unexpected_idx in finish.nonzero()]),
+                print(
+                    "unexpected end at index %s" % str([unexpected_idx.item() for unexpected_idx in finish.nonzero()]),
                 )
                 if ensure_non_empty:
                     if show_tqdm:
                         pbar.close()
-                    self.logger.warning("regenerate in order to ensure non-empty")
-                    del (
-                        start_idx,
-                        end_idx,
-                        finish,
-                        temperature,
-                        attention_mask_cache,
-                        past_key_values,
-                        idx_next,
-                        inputs_ids_buf,
-                    )
+                    print("regenerate in order to ensure non-empty")
                     new_gen = self.generate(
                         emb,
                         inputs_ids,
@@ -570,10 +517,8 @@ class GPT(nn.Module):
                     )
                     for result in new_gen:
                         yield result
-                    del inputs_ids
                 return
 
-            del idx_next
             progress += 1
             inputs_ids = inputs_ids_buf.narrow(1, 0, progress)
 
@@ -582,7 +527,7 @@ class GPT(nn.Module):
             stream_iter += not_finished.any().int()
             if stream:
                 if stream_iter > 0 and stream_iter % stream_batch == 0:
-                    self.logger.debug("yield stream result, end: %d", end_idx)
+                    print("yield stream result, end: %d", end_idx)
                     yield self._prepare_generation_outputs(
                         inputs_ids,
                         start_idx,
@@ -591,7 +536,6 @@ class GPT(nn.Module):
                         hiddens,
                         infer_text,
                     )
-            del not_finished
 
             if finish.all() or context.get():
                 break
@@ -604,13 +548,11 @@ class GPT(nn.Module):
 
         if not finish.all():
             if context.get():
-                self.logger.warning("generation is interrupted")
+                print("generation is interrupted")
             else:
-                self.logger.warning(
+                print(
                     f"incomplete result. hit max_new_token: {max_new_token}"
                 )
-
-        del finish, inputs_ids_buf
 
         yield self._prepare_generation_outputs(
             inputs_ids,

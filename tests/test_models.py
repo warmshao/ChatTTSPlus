@@ -134,7 +134,29 @@ def test_vocos():
 
 
 def test_gpt():
-    pass
+    from chattts_plus.models.gpt import GPT
+
+    device = torch.device("cuda")
+    dtype = torch.float16
+
+    gpt_cfg = dict(
+        hidden_size=768,
+        intermediate_size=3072,
+        num_attention_heads=12,
+        num_hidden_layers=20,
+        use_cache=False,
+        max_position_embeddings=4096,
+        spk_emb_dim=192,
+        spk_KL=False,
+        num_audio_tokens=626,
+        num_vq=4,
+    )
+    gpt = GPT(gpt_cfg)
+
+    gpt = gpt.eval().to(device, dtype=dtype)
+    gpt_ckpt_path = "checkpoints/asset/GPT.pt"
+    gpt.from_pretrained(gpt_ckpt_path)
+    pdb.set_trace()
 
 
 if __name__ == '__main__':
