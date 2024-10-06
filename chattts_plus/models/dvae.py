@@ -203,6 +203,7 @@ class DVAE(nn.Module):
             vq_config: Optional[dict] = None,
             dim=512,
             coef: Optional[str] = None,
+            **kwargs
     ):
         super().__init__()
         if coef is None:

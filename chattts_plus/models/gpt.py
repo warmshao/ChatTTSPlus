@@ -27,6 +27,7 @@ class GPT(nn.Module):
             num_text_tokens: int = 21178,
             num_vq=4,
             use_flash_attn=False,
+            **kwargs
     ):
         super().__init__()
 

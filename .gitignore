@@ -3,3 +3,4 @@ checkpoints
 .idea
 data
 *.egg-info
+.DS_store

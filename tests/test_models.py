@@ -11,8 +11,13 @@ import torchaudio
 def test_tokenizer():
     from chattts_plus.models.tokenizer import Tokenizer
     tokenizer_path = "checkpoints/asset/tokenizer.pt"
-    device = torch.device("cuda")
-    tokenizer_ = Tokenizer(tokenizer_path, device)
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        weight_type = torch.float16
+    else:
+        device = torch.device("cpu")
+        weight_type = torch.float32
+    tokenizer_ = Tokenizer(tokenizer_path)
 
     text = "hello world!"
     input_ids, attention_mask, text_mask = tokenizer_.encode([text], 4, None, device)
@@ -20,14 +25,18 @@ def test_tokenizer():
 
 def test_dvae_encode():
     from chattts_plus.models.dvae import DVAE
-    device = torch.device("cuda")
-    dtype = torch.float32
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        weight_type = torch.float32
+    else:
+        device = torch.device("cpu")
+        weight_type = torch.float32
 
     audio_file = "data/xionger/slicer_opt/vocal_5.WAV_10.wav_0000251200_0000423680.wav"
     audio_wav, audio_sr_ = torchaudio.load(audio_file)
     audio_sr = 24000
     audio_wav = torchaudio.functional.resample(audio_wav, orig_freq=audio_sr_, new_freq=audio_sr)
-    audio_wav = torch.mean(audio_wav, 0).to(device, dtype=dtype)
+    audio_wav = torch.mean(audio_wav, 0).to(device, dtype=weight_type)
 
     decoder_config = dict(
         idim=512,
@@ -58,14 +67,18 @@ def test_dvae_encode():
     )
     dvae_ckpt_path = "checkpoints/asset/DVAE_full.pt"
     dvae_encoder.load_state_dict(torch.load(dvae_ckpt_path, weights_only=True, mmap=True))
-    dvae_encoder = dvae_encoder.eval().to(device, dtype=dtype)
+    dvae_encoder = dvae_encoder.eval().to(device, dtype=weight_type)
     audio_ids = dvae_encoder(audio_wav, "encode")
 
 
 def test_dvae_decode():
     from chattts_plus.models.dvae import DVAE
-    device = torch.device("cuda")
-    dtype = torch.float32
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        weight_type = torch.float32
+    else:
+        device = torch.device("cpu")
+        weight_type = torch.float32
     decoder_config = dict(
         idim=384,
         odim=384,
@@ -80,9 +93,9 @@ def test_dvae_decode():
     )
     decoder_ckpt_path = "checkpoints/asset/Decoder.pt"
     dvae_decoder.load_state_dict(torch.load(decoder_ckpt_path, weights_only=True, mmap=True))
-    dvae_decoder = dvae_decoder.eval().to(device, dtype=dtype)
+    dvae_decoder = dvae_decoder.eval().to(device, dtype=weight_type)
 
-    vq_feats = torch.randn(1, 768, 388).to(device, dtype=dtype)
+    vq_feats = torch.randn(1, 768, 388).to(device, dtype=weight_type)
     mel_feats = dvae_decoder(vq_feats)
     pdb.set_trace()
 
@@ -136,8 +149,12 @@ def test_vocos():
 def test_gpt():
     from chattts_plus.models.gpt import GPT
 
-    device = torch.device("cuda")
-    dtype = torch.float16
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        weight_type = torch.float16
+    else:
+        device = torch.device("cpu")
+        weight_type = torch.float32
 
     gpt_cfg = dict(
         hidden_size=768,
@@ -153,7 +170,7 @@ def test_gpt():
     )
     gpt = GPT(gpt_cfg)
 
-    gpt = gpt.eval().to(device, dtype=dtype)
+    gpt = gpt.eval().to(device, dtype=weight_type)
     gpt_ckpt_path = "checkpoints/asset/GPT.pt"
     gpt.from_pretrained(gpt_ckpt_path)
     pdb.set_trace()
