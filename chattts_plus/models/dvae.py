@@ -9,6 +9,8 @@ import torch.nn.functional as F
 import torchaudio
 from vector_quantize_pytorch import GroupedResidualFSQ
 
+from ..commons import logger
+
 
 class ConvNeXtBlock(nn.Module):
     def __init__(
@@ -202,16 +204,15 @@ class DVAE(nn.Module):
             encoder_config: Optional[dict] = None,
             vq_config: Optional[dict] = None,
             dim=512,
-            coef: Optional[str] = None,
+            coef: Optional[torch.Tensor] = None,
             **kwargs
     ):
         super().__init__()
+        self.logger = logger.get_logger(self.__class__.__name__)
+
         if coef is None:
             coef = torch.rand(100)
-        else:
-            coef = torch.from_numpy(
-                np.copy(np.frombuffer(b14.decode_from_string(coef), dtype=np.float32))
-            )
+
         self.register_buffer("coef", coef.unsqueeze(0).unsqueeze_(2))
 
         if encoder_config is not None:
@@ -233,6 +234,7 @@ class DVAE(nn.Module):
 
         self.model_path = kwargs.get("model_path", None)
         if self.model_path:
+            self.logger.info(f"loading DVAE pretrained model: {self.model_path}")
             self.from_pretrained(self.model_path)
 
     def from_pretrained(self, file_path: str):

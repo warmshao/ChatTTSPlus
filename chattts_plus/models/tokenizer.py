@@ -14,11 +14,16 @@ import torch
 import torch.nn.functional as F
 from transformers import BertTokenizerFast
 
+from ..commons import logger
+
 
 class Tokenizer:
     def __init__(
             self, model_path, **kwargs
     ):
+        self.logger = logger.get_logger(self.__class__.__name__)
+        self.logger.info(f"loading Tokenizer pretrained model: {model_path}")
+
         tokenizer: BertTokenizerFast = torch.load(
             model_path, map_location="cpu", mmap=True
         )

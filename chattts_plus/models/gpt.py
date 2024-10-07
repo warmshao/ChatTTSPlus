@@ -17,6 +17,7 @@ from transformers.utils import is_flash_attn_2_available
 
 from .llama import LlamaModel
 from .processors import CustomRepetitionPenaltyLogitsProcessorRepeat
+from ..commons import logger
 
 
 class GPT(nn.Module):
@@ -30,7 +31,7 @@ class GPT(nn.Module):
             **kwargs
     ):
         super().__init__()
-
+        self.logger = logger.get_logger(self.__class__.__name__)
         self.num_vq = num_vq
         self.num_audio_tokens = num_audio_tokens
 
@@ -76,6 +77,7 @@ class GPT(nn.Module):
 
         self.model_path = kwargs.get("model_path", None)
         if self.model_path:
+            self.logger.info(f"loading GPT pretrained model: {self.model_path}")
             self.from_pretrained(self.model_path)
 
     def from_pretrained(self, file_path: str):
@@ -101,7 +103,7 @@ class GPT(nn.Module):
                 **config,
                 attn_implementation="flash_attention_2",
             )
-            print(
+            self.logger.info(
                 "enabling flash_attention_2 may make gpt be even slower"
             )
         else:
@@ -494,13 +496,13 @@ class GPT(nn.Module):
                 )
 
             if i == 0 and finish.any():
-                print(
+                self.logger.info(
                     "unexpected end at index %s" % str([unexpected_idx.item() for unexpected_idx in finish.nonzero()]),
                 )
                 if ensure_non_empty:
                     if show_tqdm:
                         pbar.close()
-                    print("regenerate in order to ensure non-empty")
+                    self.logger.info("regenerate in order to ensure non-empty")
                     new_gen = self.generate(
                         emb,
                         inputs_ids,
@@ -532,7 +534,7 @@ class GPT(nn.Module):
             stream_iter += not_finished.any().int()
             if stream:
                 if stream_iter > 0 and stream_iter % stream_batch == 0:
-                    print("yield stream result, end: %d", end_idx)
+                    self.logger.info("yield stream result, end: %d", end_idx)
                     yield self._prepare_generation_outputs(
                         inputs_ids,
                         start_idx,
@@ -553,9 +555,9 @@ class GPT(nn.Module):
 
         if not finish.all():
             if context.get():
-                print("generation is interrupted")
+                self.logger.info("generation is interrupted")
             else:
-                print(
+                self.logger.info(
                     f"incomplete result. hit max_new_token: {max_new_token}"
                 )
 

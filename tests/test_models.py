@@ -10,14 +10,14 @@ import torchaudio
 
 def test_tokenizer():
     from chattts_plus.models.tokenizer import Tokenizer
-    tokenizer_path = "checkpoints/asset/tokenizer.pt"
+    model_path = "checkpoints/asset/tokenizer.pt"
     if torch.cuda.is_available():
         device = torch.device("cuda")
         weight_type = torch.float16
     else:
         device = torch.device("cpu")
         weight_type = torch.float32
-    tokenizer_ = Tokenizer(tokenizer_path)
+    tokenizer_ = Tokenizer(model_path)
 
     text = "hello world!"
     input_ids, attention_mask, text_mask = tokenizer_.encode([text], 4, None, device)
@@ -58,17 +58,19 @@ def test_dvae_encode():
         G=2,
         R=2,
     )
+    model_path = "checkpoints/asset/DVAE_full.pt"
+    coef = torch.rand(100)
     dvae_encoder = DVAE(
         decoder_config=decoder_config,
         encoder_config=encoder_config,
         vq_config=vq_config,
         dim=decoder_config["idim"],
-        coef=None,
+        model_path=model_path,
+        coef=coef,
     )
-    dvae_ckpt_path = "checkpoints/asset/DVAE_full.pt"
-    dvae_encoder.load_state_dict(torch.load(dvae_ckpt_path, weights_only=True, mmap=True))
     dvae_encoder = dvae_encoder.eval().to(device, dtype=weight_type)
     audio_ids = dvae_encoder(audio_wav, "encode")
+    pdb.set_trace()
 
 
 def test_dvae_decode():
@@ -86,13 +88,14 @@ def test_dvae_decode():
         n_layer=12,
         bn_dim=128
     )
+    model_path = "checkpoints/asset/Decoder.pt"
+    coef = torch.rand(100)
     dvae_decoder = DVAE(
         decoder_config=decoder_config,
         dim=decoder_config["idim"],
-        coef=None,
+        coef=coef,
+        model_path=model_path
     )
-    decoder_ckpt_path = "checkpoints/asset/Decoder.pt"
-    dvae_decoder.load_state_dict(torch.load(decoder_ckpt_path, weights_only=True, mmap=True))
     dvae_decoder = dvae_decoder.eval().to(device, dtype=weight_type)
 
     vq_feats = torch.randn(1, 768, 388).to(device, dtype=weight_type)
@@ -155,7 +158,7 @@ def test_gpt():
     else:
         device = torch.device("cpu")
         weight_type = torch.float32
-
+    model_path = "checkpoints/asset/GPT.pt"
     gpt_cfg = dict(
         hidden_size=768,
         intermediate_size=3072,
@@ -168,11 +171,9 @@ def test_gpt():
         num_audio_tokens=626,
         num_vq=4,
     )
-    gpt = GPT(gpt_cfg)
+    gpt = GPT(gpt_cfg, model_path=model_path)
 
     gpt = gpt.eval().to(device, dtype=weight_type)
-    gpt_ckpt_path = "checkpoints/asset/GPT.pt"
-    gpt.from_pretrained(gpt_ckpt_path)
     pdb.set_trace()
 
 
