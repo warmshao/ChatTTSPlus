@@ -4,6 +4,8 @@
 # @FileName: chattts_plus_pipeline.py
 
 from ..commons import text_utils, logger
+from .. import models
+from .. import trt_models
 
 
 class ChatTTSPlusPipeline:
@@ -21,6 +23,16 @@ class ChatTTSPlusPipeline:
 
     def load_models(self, **kwargs):
         self.model_dict = dict()
+        self.coef = None
         for model_name in self.cfg.MODELS:
-            pass
+            self.logger.info("loading model: {}".format(model_name))
+            if model_name.lower() == "vocos":
+                pass
+            else:
+                if self.cfg.MODELS[model_name]["infer_type"] == "pytorch":
+                    model_ = getattr(models, self.cfg.MODELS[model_name]["name"])(
+                        **self.cfg.MODELS[model_name]["kwargs"])
 
+                    self.model_dict[model_name] = model_
+                elif self.cfg.MODELS[model_name]["infer_type"] == "trt":
+                    pass

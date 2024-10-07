@@ -231,6 +231,13 @@ class DVAE(nn.Module):
         else:
             self.vq_layer = None
 
+        self.model_path = kwargs.get("model_path", None)
+        if self.model_path:
+            self.from_pretrained(self.model_path)
+
+    def from_pretrained(self, file_path: str):
+        self.load_state_dict(torch.load(file_path, weights_only=True, mmap=True))
+
     def __repr__(self) -> str:
         return b14.encode_to_string(
             self.coef.cpu().numpy().astype(np.float32).tobytes()

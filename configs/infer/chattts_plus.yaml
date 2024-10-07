@@ -3,12 +3,13 @@ MODELS:
     name: "Tokenizer"
     infer_type: "pytorch"
     kwargs:
-      tokenizer_path: "checkpoints/asset/tokenizer.pt"
+      model_path: "checkpoints/asset/tokenizer.pt"
   dvae_encode:
     name: "DVAE"
     infer_type: "pytorch"
     kwargs:
       model_path: "checkpoints/asset/DVAE_full.pt"
+      dim: 512
       decoder_config:
         idim: 512
         odim: 512
@@ -35,6 +36,7 @@ MODELS:
     infer_type: "pytorch"
     kwargs:
       model_path: "checkpoints/asset/Decoder.pt"
+      dim: 384
       decoder_config:
         idim: 384
         odim: 384

@@ -17,10 +17,10 @@ from transformers import BertTokenizerFast
 
 class Tokenizer:
     def __init__(
-            self, tokenizer_path: torch.serialization.FILE_LIKE, **kwargs
+            self, model_path, **kwargs
     ):
         tokenizer: BertTokenizerFast = torch.load(
-            tokenizer_path, map_location="cpu", mmap=True
+            model_path, map_location="cpu", mmap=True
         )
         self._tokenizer = tokenizer
 

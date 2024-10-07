@@ -74,6 +74,10 @@ class GPT(nn.Module):
             ],
         )
 
+        self.model_path = kwargs.get("model_path", None)
+        if self.model_path:
+            self.from_pretrained(self.model_path)
+
     def from_pretrained(self, file_path: str):
         self.load_state_dict(torch.load(file_path, weights_only=True, mmap=True))
 
