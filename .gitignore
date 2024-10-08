@@ -5,3 +5,4 @@ data
 *.egg-info
 .DS_store
 logs
+*/__pycache__/*
