@@ -8,10 +8,13 @@ import torch
 import vocos
 import numpy as np
 import pybase16384 as b14
+from numpy import dtype
+
 from ..commons import text_utils, logger
 from .. import models
 from .. import trt_models
 from ..commons import constants
+from ..commons import norm
 
 
 class ChatTTSPlusPipeline:
@@ -32,7 +35,7 @@ class ChatTTSPlusPipeline:
                 self.dtype = torch.float32
         else:
             # CPU 和 MPS 不支持使用 float16
-            if str(self.device) != "cuda":
+            if str(self.device) != "cuda" and self.dtype == torch.float16:
                 self.logger.warning("CPU and MPS do not support FLOAT16 dtype for ChatttsPlus pipeline")
                 self.dtype = torch.float32
         self.load_models(**kwargs)
@@ -81,5 +84,20 @@ class ChatTTSPlusPipeline:
                 elif self.cfg.MODELS[model_name]["infer_type"] == "trt":
                     raise NotImplementedError
 
+        spk_stat_path = os.path.join(constants.CHECKPOINT_DIR, "asset/spk_stat.pt")
+        self.logger.info(f"loading speaker stat: {spk_stat_path}")
+        assert os.path.exists(spk_stat_path), f"Missing spk_stat.pt: {spk_stat_path}"
+        spk_stat: torch.Tensor = torch.load(
+            spk_stat_path,
+            weights_only=True,
+            mmap=True
+        ).to(self.device, dtype=self.dtype)
+        self.std, self.mean = spk_stat.chunk(2)
+
+        normalizer_json = os.path.join(constants.PROJECT_DIR, "assets", "homophones_map.json")
+        self.logger.info(f"loading normalizer: {normalizer_json}")
+        self.normalizer = norm.Normalizer(normalizer_json)
+
+    @torch.no_grad()
     def infer(self):
         pass
