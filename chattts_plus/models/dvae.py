@@ -1,4 +1,5 @@
 import math
+import pdb
 from typing import List, Optional, Literal, Tuple
 
 import numpy as np
@@ -99,7 +100,8 @@ class GFSQ(nn.Module):
         if self.transpose:
             x.transpose_(1, 2)
         # feat, ind = self.quantizer(x)
-        _, ind = self.quantizer(x)
+        with torch.autocast(device_type=str(x.device), dtype=torch.float32):
+            _, ind = self.quantizer(x)
         """
         ind = rearrange(
             ind, "g b t r ->b t (g r)",

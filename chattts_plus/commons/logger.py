@@ -44,7 +44,7 @@ class Formatter(logging.Formatter):
         self.color = color
 
     def format(self, record: logging.LogRecord):
-        logstr = "[" + datetime.now(self.tz).strftime("%z %Y%m%d %H:%M:%S") + "] ["
+        logstr = "[" + datetime.now(self.tz).strftime("%Y%m%d %H:%M:%S") + "] ["
         if self.color:
             logstr += log_level_color_code.get(record.levelno, colorCodeInfo)
         logstr += log_level_msg_str.get(record.levelno, record.levelname)

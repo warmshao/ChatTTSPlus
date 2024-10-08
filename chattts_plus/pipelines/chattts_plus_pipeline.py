@@ -15,6 +15,7 @@ from .. import models
 from .. import trt_models
 from ..commons import constants
 from ..commons import norm
+from ..commons.utils import RefineTextParams, InferCodeParams
 
 
 class ChatTTSPlusPipeline:
@@ -67,10 +68,12 @@ class ChatTTSPlusPipeline:
                 head = vocos.heads.ISTFTHead(**self.cfg.MODELS[model_name]["kwargs"]["head_config"])
                 if "mps" in str(self.device):
                     device = torch.device("cpu")
+                    dtype = torch.float32
                 else:
                     device = self.device
+                    dtype = self.dtype
                 model_ = vocos.Vocos(feature_extractor=feature_extractor, backbone=backbone, head=head)
-                model_.eval().to(device, dtype=self.dtype)
+                model_.eval().to(device, dtype=dtype)
                 self.models_dict[model_name] = model_
             else:
                 if self.cfg.MODELS[model_name]["infer_type"] == "pytorch":
@@ -99,5 +102,16 @@ class ChatTTSPlusPipeline:
         self.normalizer = norm.Normalizer(normalizer_json)
 
     @torch.no_grad()
-    def infer(self):
+    def infer(self,
+              text,
+              stream=False,
+              lang=None,
+              skip_refine_text=False,
+              refine_text_only=False,
+              use_decoder=True,
+              do_text_normalization=True,
+              do_homophone_replacement=True,
+              params_refine_text=RefineTextParams(),
+              params_infer_code=InferCodeParams(),
+              **kwargs):
         pass

@@ -11,7 +11,7 @@ def test_chattts_plus_pipeline():
     infer_cfg_path = "configs/infer/chattts_plus.yaml"
     infer_cfg = OmegaConf.load(infer_cfg_path)
 
-    pipeline = ChatTTSPlusPipeline(infer_cfg, device=torch.device("cpu"))
+    pipeline = ChatTTSPlusPipeline(infer_cfg, device=torch.device("cuda"))
 
 
 if __name__ == '__main__':
