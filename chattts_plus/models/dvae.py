@@ -204,7 +204,7 @@ class DVAE(nn.Module):
             encoder_config: Optional[dict] = None,
             vq_config: Optional[dict] = None,
             dim=512,
-            coef: Optional[torch.Tensor] = None,
+            coef: Optional[str] = None,
             **kwargs
     ):
         super().__init__()
@@ -212,6 +212,10 @@ class DVAE(nn.Module):
 
         if coef is None:
             coef = torch.rand(100)
+        else:
+            coef = torch.from_numpy(
+                np.copy(np.frombuffer(b14.decode_from_string(coef), dtype=np.float32))
+            )
 
         self.register_buffer("coef", coef.unsqueeze(0).unsqueeze_(2))
 

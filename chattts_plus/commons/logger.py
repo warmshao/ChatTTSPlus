@@ -1,7 +1,9 @@
+import os
 import platform
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from .constants import LOG_DIR
 
 logging.getLogger("numba").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -86,14 +88,18 @@ def get_logger(name: str, lv=logging.INFO, remove_exist=False, format_root=False
             h.setFormatter(formatter)
 
     # Add file handler if log_file is specified
-    if log_file is not None:
-        log_file = Path(log_file)
-        # Create directory if it doesn't exist
-        log_file.parent.mkdir(parents=True, exist_ok=True)
+    if log_file is None:
+        os.makedirs(LOG_DIR, exist_ok=True)
+        date_str = datetime.now().strftime("%y%m%d")
+        log_file = os.path.join(LOG_DIR, f"chattts_plus_{date_str}.log")
 
-        file_handler = logging.FileHandler(str(log_file), encoding='utf-8')
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
+    log_file = Path(log_file)
+    # Create directory if it doesn't exist
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+
+    file_handler = logging.FileHandler(str(log_file), encoding='utf-8')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
 
     if format_root:
         for h in logger.root.handlers:
