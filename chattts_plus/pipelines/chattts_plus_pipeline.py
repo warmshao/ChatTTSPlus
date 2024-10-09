@@ -102,6 +102,159 @@ class ChatTTSPlusPipeline:
         self.normalizer = norm.Normalizer(normalizer_json)
 
     @torch.no_grad()
+    def _refine_text(
+            self,
+            text: str,
+            params: RefineTextParams,
+    ):
+
+        gpt = self.models_dict["gpt"]
+
+        text = [f"[Sbreak]{i}[Pbreak]{params.prompt}" for i in text]
+
+        input_ids, attention_mask, text_mask = self.tokenizer.encode(
+            text,
+            self.gpt.num_vq,
+            device=gpt.device_gpt,
+        )
+
+        logits_warpers, logits_processors = gen_logits(
+            num_code=self.tokenizer.len,
+            top_P=params.top_P,
+            top_K=params.top_K,
+            repetition_penalty=params.repetition_penalty,
+        )
+
+        emb = gpt(input_ids, text_mask)
+
+        result = next(
+            gpt.generate(
+                emb,
+                input_ids,
+                temperature=torch.tensor([params.temperature], device=device),
+                eos_token=self.tokenizer.eos_token,
+                attention_mask=attention_mask,
+                max_new_token=params.max_new_token,
+                min_new_token=params.min_new_token,
+                logits_warpers=logits_warpers,
+                logits_processors=logits_processors,
+                infer_text=True,
+                stream=False,
+                show_tqdm=params.show_tqdm,
+                ensure_non_empty=params.ensure_non_empty,
+                context=self.context,
+            )
+        )
+        return result
+
+    def _infer(
+            self,
+            text,
+            stream=False,
+            lang=None,
+            skip_refine_text=False,
+            refine_text_only=False,
+            use_decoder=True,
+            do_text_normalization=True,
+            do_text_optimization=True,
+            do_homophone_replacement=True,
+            params_refine_text=RefineTextParams(),
+            params_infer_code=InferCodeParams(),
+            **kwargs
+    ):
+
+        if not isinstance(text, list):
+            text = [text]
+
+        # 参考chattts-ui做分割、合并以及数字转换等优化
+        if do_text_optimization:
+            text_list = []
+            for text_ in text:
+                text_list.extend([t.strip() for t in text_.split("\n") if t.strip()])
+            new_text = text_utils.split_text(text_list)
+            retext = []
+            short_text = ""
+            for it in new_text:
+                if len(it) < 30:
+                    short_text += f"{it} [uv_break] "
+                    if len(short_text) > 30:
+                        retext.append(short_text)
+                        short_text = ""
+                else:
+                    retext.append(short_text + it)
+                    short_text = ""
+            if len(short_text) > 30 or len(retext) < 1:
+                retext.append(short_text)
+            elif short_text:
+                retext[-1] += f" [uv_break] {short_text}"
+
+            for text_ in retext:
+                if not text_.strip().endswith("[uv_break]"):
+                    text_ += " [uv_break]"
+            text = retext
+
+        text = [
+            self.normalizer(
+                t,
+                do_text_normalization,
+                do_homophone_replacement,
+                lang,
+            )
+            for t in text
+        ]
+
+        # refine text
+        if not skip_refine_text:
+            refined = self._refine_text(
+                text,
+                self.device,
+                params_refine_text,
+            )
+            text_tokens = refined.ids
+            text_tokens = [i[i.less(self.tokenizer.break_0_ids)] for i in text_tokens]
+            text = self.tokenizer.decode(text_tokens)
+            refined.destroy()
+            if refine_text_only:
+                yield text
+                return
+
+        if stream:
+            length = 0
+            pass_batch_count = 0
+        for result in self._infer_code(
+                text,
+                stream,
+                self.device,
+                use_decoder,
+                params_infer_code,
+        ):
+            wavs = self._decode_to_wavs(
+                result.hiddens if use_decoder else result.ids,
+                use_decoder,
+            )
+            result.destroy()
+            if stream:
+                pass_batch_count += 1
+                if pass_batch_count <= params_infer_code.pass_first_n_batches:
+                    continue
+                a = length
+                b = a + params_infer_code.stream_speed
+                if b > wavs.shape[1]:
+                    b = wavs.shape[1]
+                new_wavs = wavs[:, a:b]
+                length = b
+                yield new_wavs
+            else:
+                yield wavs
+        if stream:
+            new_wavs = wavs[:, length:]
+            # Identify rows with non-zero elements using np.any
+            # keep_rows = np.any(array != 0, axis=1)
+            keep_cols = np.sum(new_wavs != 0, axis=0) > 0
+            # Filter both rows and columns using slicing
+            yield new_wavs[:][:, keep_cols]
+
+    @torch.no_grad()
     def infer(self,
               text,
               stream=False,
@@ -110,8 +263,26 @@ class ChatTTSPlusPipeline:
               refine_text_only=False,
               use_decoder=True,
               do_text_normalization=True,
+              do_text_optimization=True,
               do_homophone_replacement=True,
               params_refine_text=RefineTextParams(),
               params_infer_code=InferCodeParams(),
               **kwargs):
-        pass
+        res_gen = self._infer(
+            text,
+            stream,
+            lang,
+            skip_refine_text,
+            refine_text_only,
+            use_decoder,
+            do_text_normalization,
+            do_text_optimization,
+            do_homophone_replacement,
+            params_refine_text,
+            params_infer_code,
+            **kwargs
+        )
+        if stream:
+            return res_gen
+        else:
+            return next(res_gen)
