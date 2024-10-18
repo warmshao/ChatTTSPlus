@@ -3,6 +3,7 @@
 # @Project : ChatTTSPlus
 # @FileName: chattts_plus_pipeline.py
 import os.path
+import pdb
 
 import torch
 import vocos
@@ -16,6 +17,7 @@ from .. import trt_models
 from ..commons import constants
 from ..commons import norm
 from ..commons.utils import RefineTextParams, InferCodeParams
+from ..models import processors
 
 
 class ChatTTSPlusPipeline:
@@ -102,6 +104,86 @@ class ChatTTSPlusPipeline:
         self.normalizer = norm.Normalizer(normalizer_json)
 
     @torch.no_grad()
+    def _infer_code(
+            self,
+            text,
+            stream: bool,
+            return_hidden: bool,
+            params: InferCodeParams,
+    ):
+        self.logger.info("Start inference audio code >>>>")
+        if not isinstance(text, list):
+            text = [text]
+
+        assert len(text), "text should not be empty"
+
+        if not isinstance(params.temperature, list):
+            temperature = [params.temperature] * self.models_dict["gpt"].num_vq
+        else:
+            temperature = params.temperature
+
+        for i, t in enumerate(text):
+            text[i] = (
+                t.replace("[Stts]", "")
+                .replace("[spk_emb]", "")
+                .replace("[empty_spk]", "")
+                .strip()
+            )
+            """
+            see https://github.com/2noise/ChatTTS/issues/459
+            """
+
+        if params.prompt:
+            text = [params.prompt + i for i in text]
+
+        txt_smp = "" if params.txt_smp is None else params.txt_smp
+        if params.spk_emb is not None:
+            text = [f"[Stts][spk_emb]{txt_smp}{i}[Ptts]" for i in text]
+        else:
+            text = [f"[Stts][empty_spk]{txt_smp}{i}[Ptts]" for i in text]
+        input_ids, attention_mask, text_mask = self.models_dict["tokenizer"].encode(
+            text,
+            self.models_dict["gpt"].num_vq,
+            prompt_str=params.spk_smp,
+            device=self.device
+        )
+
+        emb = self.models_dict["gpt"](input_ids, text_mask)
+
+        if params.spk_emb is not None:
+            self.models_dict["tokenizer"].apply_spk_emb(
+                emb, params.spk_emb, input_ids, self.device
+            )
+
+        num_code = int(self.models_dict["gpt"].emb_code[0].num_embeddings - 1)
+
+        logits_warpers, logits_processors = processors.gen_logits(
+            num_code=num_code,
+            top_P=params.top_P,
+            top_K=params.top_K,
+            repetition_penalty=params.repetition_penalty,
+        )
+
+        result = self.models_dict["gpt"].generate(
+            emb,
+            input_ids,
+            temperature=torch.tensor(temperature, device=self.device),
+            eos_token=num_code,
+            attention_mask=attention_mask,
+            max_new_token=params.max_new_token,
+            min_new_token=params.min_new_token,
+            logits_warpers=logits_warpers,
+            logits_processors=logits_processors,
+            infer_text=False,
+            return_hidden=return_hidden,
+            stream=stream,
+            show_tqdm=params.show_tqdm,
+            ensure_non_empty=params.ensure_non_empty,
+            stream_batch=params.stream_batch,
+        )
+        return result
+
+    @torch.no_grad()
     def _refine_text(
             self,
             text: str,
@@ -112,27 +194,27 @@ class ChatTTSPlusPipeline:
 
         text = [f"[Sbreak]{i}[Pbreak]{params.prompt}" for i in text]
 
-        input_ids, attention_mask, text_mask = self.tokenizer.encode(
+        input_ids, attention_mask, text_mask = self.models_dict["tokenizer"].encode(
             text,
-            self.gpt.num_vq,
-            device=gpt.device_gpt,
+            self.models_dict["gpt"].num_vq,
+            device=self.device,
         )
 
-        logits_warpers, logits_processors = gen_logits(
-            num_code=self.tokenizer.len,
+        logits_warpers, logits_processors = processors.gen_logits(
+            num_code=self.models_dict["tokenizer"].len,
             top_P=params.top_P,
             top_K=params.top_K,
             repetition_penalty=params.repetition_penalty,
         )
 
-        emb = gpt(input_ids, text_mask)
+        emb = self.models_dict["gpt"](input_ids, text_mask)
 
         result = next(
-            gpt.generate(
+            self.models_dict["gpt"].generate(
                 emb,
                 input_ids,
-                temperature=torch.tensor([params.temperature], device=device),
-                eos_token=self.tokenizer.eos_token,
+                temperature=torch.tensor([params.temperature], device=self.device),
+                eos_token=self.models_dict["tokenizer"].eos_token,
                 attention_mask=attention_mask,
                 max_new_token=params.max_new_token,
                 min_new_token=params.min_new_token,
@@ -141,11 +223,36 @@ class ChatTTSPlusPipeline:
                 infer_text=True,
                 stream=False,
                 show_tqdm=params.show_tqdm,
-                ensure_non_empty=params.ensure_non_empty,
-                context=self.context,
+                ensure_non_empty=params.ensure_non_empty
             )
         )
         return result
+
+    @torch.inference_mode()
+    def _decode_to_wavs(
+            self,
+            result_list,
+            use_decoder: bool,
+    ):
+        self.logger.info("Start decode to wavs >>>>")
+        decoder = self.models_dict["dvae_decode"] if use_decoder else self.models_dict["dvae_encode"]
+        max_x_len = -1
+        if len(result_list) == 0:
+            return np.array([], dtype=np.float32)
+        for result in result_list:
+            if result.size(0) > max_x_len:
+                max_x_len = result.size(0)
+        batch_result = torch.zeros(
+            (len(result_list), result_list[0].size(1), max_x_len),
+            dtype=result_list[0].dtype,
+            device=result_list[0].device,
+        )
+        for i in range(len(result_list)):
+            src = result_list[i]
+            batch_result[i].narrow(1, 0, src.size(0)).copy_(src.permute(1, 0))
+        mel_specs = decoder(batch_result)
+        wavs = self.models_dict["vocos"](mel_specs)
+        return wavs
 
     def _infer(
             self,
@@ -168,6 +275,7 @@ class ChatTTSPlusPipeline:
 
         # 参考chattts-ui做分割、合并以及数字转换等优化
         if do_text_optimization:
+            self.logger.info("Optimization on text, such as split, merge and so on")
             text_list = []
             for text_ in text:
                 text_list.extend([t.strip() for t in text_.split("\n") if t.strip()])
@@ -188,10 +296,12 @@ class ChatTTSPlusPipeline:
             elif short_text:
                 retext[-1] += f" [uv_break] {short_text}"
 
-            for text_ in retext:
-                if not text_.strip().endswith("[uv_break]"):
-                    text_ += " [uv_break]"
+            for ti in range(len(retext)):
+                if not retext[ti].strip().endswith("[uv_break]"):
+                    retext[ti] += " [uv_break]"
             text = retext
+            self.logger.info("Finish text optimization: ")
+            self.logger.info(text)
 
         text = [
             self.normalizer(
@@ -202,18 +312,21 @@ class ChatTTSPlusPipeline:
             )
             for t in text
         ]
+        self.logger.info("Finish text normalization: ")
+        self.logger.info(text)
 
         # refine text
         if not skip_refine_text:
+            self.logger.info("Process Text Refinement >>>")
             refined = self._refine_text(
                 text,
-                self.device,
-                params_refine_text,
+                params_refine_text
             )
             text_tokens = refined.ids
-            text_tokens = [i[i.less(self.tokenizer.break_0_ids)] for i in text_tokens]
-            text = self.tokenizer.decode(text_tokens)
-            refined.destroy()
+            text_tokens = [i[i.less(self.models_dict["tokenizer"].break_0_ids)] for i in text_tokens]
+            text = self.models_dict["tokenizer"].decode(text_tokens)
+            self.logger.info("Refine text: ")
+            self.logger.info(text)
             if refine_text_only:
                 yield text
                 return
@@ -224,7 +337,6 @@ class ChatTTSPlusPipeline:
         for result in self._infer_code(
                 text,
                 stream,
-                self.device,
                 use_decoder,
                 params_infer_code,
         ):
@@ -232,7 +344,6 @@ class ChatTTSPlusPipeline:
                 result.hiddens if use_decoder else result.ids,
                 use_decoder,
             )
-            result.destroy()
             if stream:
                 pass_batch_count += 1
                 if pass_batch_count <= params_infer_code.pass_first_n_batches:
@@ -268,6 +379,11 @@ class ChatTTSPlusPipeline:
               params_refine_text=RefineTextParams(),
               params_infer_code=InferCodeParams(),
               **kwargs):
+        self.logger.info("Params refine text:")
+        self.logger.info(params_refine_text.__dict__)
+        self.logger.info("Params infer code:")
+        self.logger.info(params_infer_code.__dict__)
+
         res_gen = self._infer(
             text,
             stream,
