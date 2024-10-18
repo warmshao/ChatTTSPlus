@@ -4,7 +4,8 @@
 # @FileName: chattts_plus_pipeline.py
 import os.path
 import pdb
-
+import time
+import lzma
 import torch
 import vocos
 import numpy as np
@@ -41,6 +42,8 @@ class ChatTTSPlusPipeline:
             if str(self.device) != "cuda" and self.dtype == torch.float16:
                 self.logger.warning("CPU and MPS do not support FLOAT16 dtype for ChatttsPlus pipeline")
                 self.dtype = torch.float32
+        self.logger.info(f"device: {str(self.device)}")
+        self.logger.info(f"dtype: {str(self.dtype)}")
         self.load_models(**kwargs)
 
     def load_models(self, **kwargs):
@@ -75,6 +78,8 @@ class ChatTTSPlusPipeline:
                     device = self.device
                     dtype = self.dtype
                 model_ = vocos.Vocos(feature_extractor=feature_extractor, backbone=backbone, head=head)
+                model_.load_state_dict(
+                    torch.load(self.cfg.MODELS[model_name]["kwargs"]["model_path"], weights_only=True, mmap=True))
                 model_.eval().to(device, dtype=dtype)
                 self.models_dict[model_name] = model_
             else:
@@ -190,8 +195,6 @@ class ChatTTSPlusPipeline:
             params: RefineTextParams,
     ):
 
-        gpt = self.models_dict["gpt"]
-
         text = [f"[Sbreak]{i}[Pbreak]{params.prompt}" for i in text]
 
         input_ids, attention_mask, text_mask = self.models_dict["tokenizer"].encode(
@@ -250,9 +253,37 @@ class ChatTTSPlusPipeline:
         for i in range(len(result_list)):
             src = result_list[i]
             batch_result[i].narrow(1, 0, src.size(0)).copy_(src.permute(1, 0))
-        mel_specs = decoder(batch_result)
-        wavs = self.models_dict["vocos"](mel_specs)
+        mel_specs = decoder(batch_result).to(dtype=next(self.models_dict["vocos"].parameters()).dtype)
+        if "mps" in str(mel_specs.device):
+            mel_specs = mel_specs.to(device=torch.device("cpu"))
+        wavs = self.models_dict["vocos"].decode(mel_specs)
         return wavs
+
+    def sample_random_speaker(self) -> str:
+        return self._encode_spk_emb(self._sample_random_speaker())
+
+    @staticmethod
+    @torch.no_grad()
+    def _encode_spk_emb(spk_emb: torch.Tensor) -> str:
+        arr: np.ndarray = spk_emb.to(dtype=torch.float16, device="cpu").numpy()
+        s = b14.encode_to_string(
+            lzma.compress(
+                arr.tobytes(),
+                format=lzma.FORMAT_RAW,
+                filters=[{"id": lzma.FILTER_LZMA2, "preset": 9 | lzma.PRESET_EXTREME}],
+            ),
+        )
+        return s
+
+    @torch.no_grad()
+    def _sample_random_speaker(self) -> torch.Tensor:
+        dim: int = self.models_dict["gpt"].gpt.layers[0].mlp.gate_proj.in_features
+        spk = (
+            torch.randn(dim, device=self.std.device, dtype=self.std.dtype)
+            .mul_(self.std)
+            .add_(self.mean)
+        )
+        return spk
 
     def _infer(
             self,
@@ -384,6 +415,20 @@ class ChatTTSPlusPipeline:
         self.logger.info("Params infer code:")
         self.logger.info(params_infer_code.__dict__)
 
+        if kwargs.get("speaker_emb_path", None) is None:
+            self.logger.info("speaker_emb is None, random select a speaker!")
+            speaker_emb = self.sample_random_speaker()
+            params_infer_code.spk_emb = speaker_emb
+            self.logger.info(f"speaker embedding is : {speaker_emb}")
+            SPEAKER_DIR = kwargs.get("speaker_save_dir", os.path.join(os.path.dirname(__file__), "..", "..", "results/speakers"))
+            os.makedirs(SPEAKER_DIR, exist_ok=True)
+            torch.save(speaker_emb, f"{SPEAKER_DIR}/{time.time()}.pt")
+            self.logger.info(f"saving speaker emb at: {SPEAKER_DIR}/{time.time()}.pt")
+        else:
+            speaker_emb_path = kwargs.get("speaker_emb_path")
+            self.logger.info(f"loading speaker_emb from {speaker_emb_path}")
+            speaker_emb = torch.load(speaker_emb_path)
+            params_infer_code.spk_emb = speaker_emb
         res_gen = self._infer(
             text,
             stream,

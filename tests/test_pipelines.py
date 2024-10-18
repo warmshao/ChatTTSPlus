@@ -8,6 +8,7 @@ import os
 def test_chattts_plus_pipeline():
     import torch
     import time
+    import torchaudio
 
     from chattts_plus.pipelines.chattts_plus_pipeline import ChatTTSPlusPipeline
     from chattts_plus.commons.utils import InferCodeParams, RefineTextParams
@@ -19,9 +20,7 @@ def test_chattts_plus_pipeline():
     pipeline = ChatTTSPlusPipeline(infer_cfg, device=torch.device("cuda"))
 
     speaker_emb_path = "assets/speakers/2222.pt"
-    speaker_emb = torch.load(speaker_emb_path)
     params_infer_code = InferCodeParams(
-        spk_emb=speaker_emb,
         prompt="[speed_5]",
         temperature=.0003,
         max_new_token=2048,
@@ -46,13 +45,14 @@ def test_chattts_plus_pipeline():
         skip_refine_text=False,
         do_text_normalization=True,
         do_homophone_replacement=True,
-        do_text_optimization=True
+        do_text_optimization=True,
+        speaker_emb_path=None
     )
     print("total infer time:{} sec".format(time.time() - t0))
     save_dir = "results/chattts_plus"
     os.makedirs(save_dir, exist_ok=True)
     audio_save_path = f"{save_dir}/{os.path.basename(speaker_emb_path)}-{time.time()}.wav"
-    torchaudio.save(audio_save_path, torch.from_numpy(wavs[0]).unsqueeze(0), 24000)
+    torchaudio.save(audio_save_path, wavs[0].cpu().float().unsqueeze(0), 24000)
     print(audio_save_path)
 
 
