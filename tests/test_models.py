@@ -10,9 +10,14 @@ import torchaudio
 
 def test_tokenizer():
     from chattts_plus.models.tokenizer import Tokenizer
-    tokenizer_path = "checkpoints/asset/tokenizer.pt"
-    device = torch.device("cuda")
-    tokenizer_ = Tokenizer(tokenizer_path, device)
+    model_path = "checkpoints/asset/tokenizer.pt"
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        weight_type = torch.float16
+    else:
+        device = torch.device("cpu")
+        weight_type = torch.float32
+    tokenizer_ = Tokenizer(model_path)
 
     text = "hello world!"
     input_ids, attention_mask, text_mask = tokenizer_.encode([text], 4, None, device)
@@ -20,14 +25,18 @@ def test_tokenizer():
 
 def test_dvae_encode():
     from chattts_plus.models.dvae import DVAE
-    device = torch.device("cuda")
-    dtype = torch.float32
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        weight_type = torch.float16
+    else:
+        device = torch.device("cpu")
+        weight_type = torch.float32
 
     audio_file = "data/xionger/slicer_opt/vocal_5.WAV_10.wav_0000251200_0000423680.wav"
     audio_wav, audio_sr_ = torchaudio.load(audio_file)
     audio_sr = 24000
     audio_wav = torchaudio.functional.resample(audio_wav, orig_freq=audio_sr_, new_freq=audio_sr)
-    audio_wav = torch.mean(audio_wav, 0).to(device, dtype=dtype)
+    audio_wav = torch.mean(audio_wav, 0).to(device, dtype=weight_type)
 
     decoder_config = dict(
         idim=512,
@@ -49,23 +58,28 @@ def test_dvae_encode():
         G=2,
         R=2,
     )
+    model_path = "checkpoints/asset/DVAE_full.pt"
     dvae_encoder = DVAE(
         decoder_config=decoder_config,
         encoder_config=encoder_config,
         vq_config=vq_config,
         dim=decoder_config["idim"],
+        model_path=model_path,
         coef=None,
     )
-    dvae_ckpt_path = "checkpoints/asset/DVAE_full.pt"
-    dvae_encoder.load_state_dict(torch.load(dvae_ckpt_path, weights_only=True, mmap=True))
-    dvae_encoder = dvae_encoder.eval().to(device, dtype=dtype)
+    dvae_encoder = dvae_encoder.eval().to(device, dtype=weight_type)
     audio_ids = dvae_encoder(audio_wav, "encode")
+    pdb.set_trace()
 
 
 def test_dvae_decode():
     from chattts_plus.models.dvae import DVAE
-    device = torch.device("cuda")
-    dtype = torch.float32
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        weight_type = torch.float16
+    else:
+        device = torch.device("cpu")
+        weight_type = torch.float32
     decoder_config = dict(
         idim=384,
         odim=384,
@@ -73,16 +87,16 @@ def test_dvae_decode():
         n_layer=12,
         bn_dim=128
     )
+    model_path = "checkpoints/asset/Decoder.pt"
     dvae_decoder = DVAE(
         decoder_config=decoder_config,
         dim=decoder_config["idim"],
         coef=None,
+        model_path=model_path
     )
-    decoder_ckpt_path = "checkpoints/asset/Decoder.pt"
-    dvae_decoder.load_state_dict(torch.load(decoder_ckpt_path, weights_only=True, mmap=True))
-    dvae_decoder = dvae_decoder.eval().to(device, dtype=dtype)
+    dvae_decoder = dvae_decoder.eval().to(device, dtype=weight_type)
 
-    vq_feats = torch.randn(1, 768, 388).to(device, dtype=dtype)
+    vq_feats = torch.randn(1, 768, 388).to(device, dtype=weight_type)
     mel_feats = dvae_decoder(vq_feats)
     pdb.set_trace()
 
@@ -117,9 +131,10 @@ def test_vocos():
     head = vocos.heads.ISTFTHead(**head_cfg)
 
     device = torch.device("cuda")
+    dtype = torch.float16
     if "mps" in str(device):
         device = torch.device("cpu")
-    dtype = torch.float32
+        dtype = torch.float32
 
     vocos = vocos.Vocos(feature_extractor=feature_extractor, backbone=backbone, head=head).to(
         device, dtype=dtype).eval()
@@ -127,7 +142,7 @@ def test_vocos():
     vocos.load_state_dict(torch.load(vocos_ckpt_path, weights_only=True, mmap=True))
 
     mel_feats = torch.randn(1, 100, 388 * 2).to(device, dtype=dtype)
-    audio_wavs = vocos.decode(mel_feats).cpu()
+    audio_wavs = vocos.decode(mel_feats).cpu().float()
     result_dir = "./results/test_vocos"
     os.makedirs(result_dir, exist_ok=True)
     torchaudio.save(os.path.join(result_dir, "test.wav"), audio_wavs, sample_rate=24000)
@@ -136,9 +151,13 @@ def test_vocos():
 def test_gpt():
     from chattts_plus.models.gpt import GPT
 
-    device = torch.device("cuda")
-    dtype = torch.float16
-
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        weight_type = torch.float16
+    else:
+        device = torch.device("cpu")
+        weight_type = torch.float32
+    model_path = "checkpoints/asset/GPT.pt"
     gpt_cfg = dict(
         hidden_size=768,
         intermediate_size=3072,
@@ -151,17 +170,15 @@ def test_gpt():
         num_audio_tokens=626,
         num_vq=4,
     )
-    gpt = GPT(gpt_cfg)
+    gpt = GPT(gpt_cfg, model_path=model_path)
 
-    gpt = gpt.eval().to(device, dtype=dtype)
-    gpt_ckpt_path = "checkpoints/asset/GPT.pt"
-    gpt.from_pretrained(gpt_ckpt_path)
+    gpt = gpt.eval().to(device, dtype=weight_type)
     pdb.set_trace()
 
 
 if __name__ == '__main__':
     # test_tokenizer()
-    # test_dvae_encode()
+    test_dvae_encode()
     # test_dvae_decode()
     # test_vocos()
-    test_gpt()
+    # test_gpt()

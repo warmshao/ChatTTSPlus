@@ -33,7 +33,6 @@ setup(
         "tqdm",
         "transformers>=4.41.1",
         "vector_quantize_pytorch",
-        "vocos",
-        "tensorrt"
+        "vocos"
     ]
 )

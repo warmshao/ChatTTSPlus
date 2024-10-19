@@ -1,0 +1,84 @@
+MODELS:
+  tokenizer:
+    name: "Tokenizer"
+    infer_type: "pytorch"
+    kwargs:
+      model_path: "checkpoints/asset/tokenizer.pt"
+  dvae_encode:
+    name: "DVAE"
+    infer_type: "pytorch"
+    kwargs:
+      model_path: "checkpoints/asset/DVAE_full.pt"
+      dim: 512
+      decoder_config:
+        idim: 512
+        odim: 512
+        hidden: 256
+        n_layer: 12
+        bn_dim: 128
+      encoder_config:
+        idim: 512
+        odim: 1024
+        hidden: 256
+        n_layer: 12
+        bn_dim: 128
+      vq_config:
+        dim: 1024
+        levels:
+          - 5
+          - 5
+          - 5
+          - 5
+        G: 2
+        R: 2
+  dvae_decode:
+    name: "DVAE"
+    infer_type: "pytorch"
+    kwargs:
+      model_path: "checkpoints/asset/Decoder.pt"
+      dim: 384
+      decoder_config:
+        idim: 384
+        odim: 384
+        hidden: 512
+        n_layer: 12
+        bn_dim: 128
+  vocos:
+    name: "Vocos"
+    infer_type: "pytorch"
+    kwargs:
+      model_path: "checkpoints/asset/Vocos.pt"
+      feature_extractor_config:
+        sample_rate: 24000
+        n_fft: 1024
+        hop_length: 256
+        n_mels: 100
+        padding: "center"
+      backbone_config:
+        input_channels: 100
+        dim: 512
+        intermediate_dim: 1536
+        num_layers: 8
+      head_config:
+        dim: 512
+        n_fft: 1024
+        hop_length: 256
+        padding: "center"
+  gpt:
+    name: "GPT"
+    infer_type: "pytorch"
+    kwargs:
+      model_path: "checkpoints/asset/GPT.pt"
+      gpt_config:
+        hidden_size: 768
+        intermediate_size: 3072
+        num_attention_heads: 12
+        num_hidden_layers: 20
+        use_cache: False
+        max_position_embeddings: 4096
+        spk_emb_dim: 192
+        spk_KL: False
+        num_audio_tokens: 626
+        num_vq: 4
+
+

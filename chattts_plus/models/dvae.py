@@ -1,4 +1,5 @@
 import math
+import pdb
 from typing import List, Optional, Literal, Tuple
 
 import numpy as np
@@ -8,6 +9,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchaudio
 from vector_quantize_pytorch import GroupedResidualFSQ
+
+from ..commons import logger
 
 
 class ConvNeXtBlock(nn.Module):
@@ -97,7 +100,8 @@ class GFSQ(nn.Module):
         if self.transpose:
             x.transpose_(1, 2)
         # feat, ind = self.quantizer(x)
-        _, ind = self.quantizer(x)
+        with torch.autocast(device_type=str(x.device), dtype=torch.float32):
+            _, ind = self.quantizer(x)
         """
         ind = rearrange(
             ind, "g b t r ->b t (g r)",
@@ -203,14 +207,18 @@ class DVAE(nn.Module):
             vq_config: Optional[dict] = None,
             dim=512,
             coef: Optional[str] = None,
+            **kwargs
     ):
         super().__init__()
+        self.logger = logger.get_logger(self.__class__.__name__)
+
         if coef is None:
             coef = torch.rand(100)
         else:
             coef = torch.from_numpy(
                 np.copy(np.frombuffer(b14.decode_from_string(coef), dtype=np.float32))
             )
+
         self.register_buffer("coef", coef.unsqueeze(0).unsqueeze_(2))
 
         if encoder_config is not None:
@@ -229,6 +237,14 @@ class DVAE(nn.Module):
             self.vq_layer = GFSQ(**vq_config)
         else:
             self.vq_layer = None
+
+        self.model_path = kwargs.get("model_path", None)
+        if self.model_path:
+            self.logger.info(f"loading DVAE pretrained model: {self.model_path}")
+            self.from_pretrained(self.model_path)
+
+    def from_pretrained(self, file_path: str):
+        self.load_state_dict(torch.load(file_path, weights_only=True, mmap=True))
 
     def __repr__(self) -> str:
         return b14.encode_to_string(

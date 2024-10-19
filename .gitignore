@@ -3,3 +3,7 @@ checkpoints
 .idea
 data
 *.egg-info
+.DS_store
+logs
+*/__pycache__/*
+scripts/conversions
