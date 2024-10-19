@@ -7,10 +7,12 @@ import pdb
 import time
 import lzma
 import torch
+import torchaudio
 import vocos
 import numpy as np
 import pybase16384 as b14
 from numpy import dtype
+from typing import Literal, Optional, List, Tuple, Dict, Union
 
 from ..commons import text_utils, logger
 from .. import models
@@ -232,6 +234,12 @@ class ChatTTSPlusPipeline:
         return result
 
     @torch.inference_mode()
+    def sample_audio_speaker(self, wav: Union[np.ndarray, torch.Tensor]) -> str:
+        if isinstance(wav, np.ndarray):
+            wav = torch.from_numpy(wav).to(self.device, dtype=self.dtype)
+        return self.models_dict["tokenizer"]._encode_prompt(self.models_dict["dvae_encode"](wav, "encode").squeeze_(0))
+
+    @torch.inference_mode()
     def _decode_to_wavs(
             self,
             result_list,
@@ -410,25 +418,43 @@ class ChatTTSPlusPipeline:
               params_refine_text=RefineTextParams(),
               params_infer_code=InferCodeParams(),
               **kwargs):
+        if kwargs.get("speaker_audio_path", None) is not None:
+            speaker_audio_path = kwargs.get("speaker_audio_path", None)
+            assert os.path.exists(speaker_audio_path), f"speaker_audio_path {speaker_audio_path} not exists!"
+            speaker_audio_text = kwargs.get("speaker_audio_text", "")
+            self.logger.info("Use zero shot >>>")
+            self.logger.info(f"speaker_audio_path is {speaker_audio_path}")
+            self.logger.info(f"speaker_audio_text is {speaker_audio_text}")
+            audio_wav, audio_sr_ = torchaudio.load(speaker_audio_path)
+            audio_sr = 24000
+            audio_wav = torchaudio.functional.resample(audio_wav, orig_freq=audio_sr_, new_freq=audio_sr)
+            audio_wav = torch.mean(audio_wav, 0).to(self.device, dtype=self.dtype)
+            spk_smp = self.sample_audio_speaker(audio_wav)
+            params_infer_code.txt_smp = speaker_audio_text
+            params_infer_code.spk_smp = spk_smp
+            params_infer_code.spk_emb = None
+        elif kwargs.get("speaker_emb_path", None) is not None:
+            assert os.path.exists(speaker_emb_path), f"speaker_emb_path {speaker_emb_path} not exists!"
+            speaker_emb_path = kwargs.get("speaker_emb_path")
+            self.logger.info(f"loading speaker_emb from {speaker_emb_path}")
+            speaker_emb = torch.load(speaker_emb_path)
+            params_infer_code.spk_emb = speaker_emb
+        else:
+            self.logger.info("speaker_emb is None, random select a speaker!")
+            speaker_emb = self.sample_random_speaker()
+            params_infer_code.spk_emb = speaker_emb
+            self.logger.info(f"speaker embedding is : {speaker_emb}")
+            SPEAKER_DIR = kwargs.get("speaker_save_dir",
+                                     os.path.join(os.path.dirname(__file__), "..", "..", "results/speakers"))
+            os.makedirs(SPEAKER_DIR, exist_ok=True)
+            torch.save(speaker_emb, f"{SPEAKER_DIR}/{time.time()}.pt")
+            self.logger.info(f"saving speaker emb at: {SPEAKER_DIR}/{time.time()}.pt")
+
         self.logger.info("Params refine text:")
         self.logger.info(params_refine_text.__dict__)
         self.logger.info("Params infer code:")
         self.logger.info(params_infer_code.__dict__)
 
-        if kwargs.get("speaker_emb_path", None) is None:
-            self.logger.info("speaker_emb is None, random select a speaker!")
-            speaker_emb = self.sample_random_speaker()
-            params_infer_code.spk_emb = speaker_emb
-            self.logger.info(f"speaker embedding is : {speaker_emb}")
-            SPEAKER_DIR = kwargs.get("speaker_save_dir", os.path.join(os.path.dirname(__file__), "..", "..", "results/speakers"))
-            os.makedirs(SPEAKER_DIR, exist_ok=True)
-            torch.save(speaker_emb, f"{SPEAKER_DIR}/{time.time()}.pt")
-            self.logger.info(f"saving speaker emb at: {SPEAKER_DIR}/{time.time()}.pt")
-        else:
-            speaker_emb_path = kwargs.get("speaker_emb_path")
-            self.logger.info(f"loading speaker_emb from {speaker_emb_path}")
-            speaker_emb = torch.load(speaker_emb_path)
-            params_infer_code.spk_emb = speaker_emb
         res_gen = self._infer(
             text,
             stream,
