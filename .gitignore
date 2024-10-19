@@ -6,3 +6,4 @@ data
 .DS_store
 logs
 */__pycache__/*
+scripts/conversions

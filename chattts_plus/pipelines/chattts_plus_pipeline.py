@@ -434,8 +434,8 @@ class ChatTTSPlusPipeline:
             params_infer_code.spk_smp = spk_smp
             params_infer_code.spk_emb = None
         elif kwargs.get("speaker_emb_path", None) is not None:
+            speaker_emb_path = kwargs.get("speaker_emb_path", None)
             assert os.path.exists(speaker_emb_path), f"speaker_emb_path {speaker_emb_path} not exists!"
-            speaker_emb_path = kwargs.get("speaker_emb_path")
             self.logger.info(f"loading speaker_emb from {speaker_emb_path}")
             speaker_emb = torch.load(speaker_emb_path)
             params_infer_code.spk_emb = speaker_emb
