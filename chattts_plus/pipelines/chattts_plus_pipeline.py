@@ -94,7 +94,10 @@ class ChatTTSPlusPipeline:
                         model_.eval().to(self.device, dtype=self.dtype)
                         self.models_dict[model_name] = model_
                 elif self.cfg.MODELS[model_name]["infer_type"] == "trt":
-                    raise NotImplementedError
+                    model_ = getattr(trt_models, self.cfg.MODELS[model_name]["name"])(
+                        **self.cfg.MODELS[model_name]["kwargs"])
+                    model_.eval().to(self.device, dtype=self.dtype)
+                    self.models_dict[model_name] = model_
 
         spk_stat_path = os.path.join(constants.CHECKPOINT_DIR, "asset/spk_stat.pt")
         self.logger.info(f"loading speaker stat: {spk_stat_path}")
@@ -211,7 +214,6 @@ class ChatTTSPlusPipeline:
             top_K=params.top_K,
             repetition_penalty=params.repetition_penalty,
         )
-
         emb = self.models_dict["gpt"](input_ids, text_mask)
 
         result = next(
@@ -285,7 +287,7 @@ class ChatTTSPlusPipeline:
 
     @torch.no_grad()
     def _sample_random_speaker(self) -> torch.Tensor:
-        dim: int = self.models_dict["gpt"].gpt.layers[0].mlp.gate_proj.in_features
+        dim: int = self.std.shape[-1]
         spk = (
             torch.randn(dim, device=self.std.device, dtype=self.std.dtype)
             .mul_(self.std)

@@ -3,3 +3,5 @@
 # @Author  : wenshao
 # @ProjectName: ChatTTSPlus
 # @FileName: __init__.py.py
+
+from .gpt_trt import GPT

@@ -81,6 +81,7 @@ class TensorRTPredictor:
         assert len(self.inputs) > 0
         assert len(self.outputs) > 0
         self.allocate_max_buffers(**kwargs)
+        self.activate()
 
     def activate(self, reuse_device_memory=None):
         if reuse_device_memory:
