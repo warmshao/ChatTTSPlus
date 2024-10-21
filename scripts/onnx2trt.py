@@ -72,27 +72,6 @@ class EngineBuilder:
         self.network = None
         self.parser = None
 
-    def set_mixed_precision(self):
-        """
-        Experimental precision mode.
-        Enable mixed-precision mode. When set, the layers defined here will be forced to FP16 to maximize
-        INT8 inference accuracy, while having minimal impact on latency.
-        """
-        self.config.set_flag(trt.BuilderFlag.PREFER_PRECISION_CONSTRAINTS)
-        self.config.set_flag(trt.BuilderFlag.DIRECT_IO)
-        self.config.set_flag(trt.BuilderFlag.REJECT_EMPTY_ALGORITHMS)
-
-        # add or remove blocks.
-        for i in range(self.network.num_layers):
-            layer = self.network.get_layer(i)
-            if "norm" in layer.name:
-                layer.precision = trt.DataType.FLOAT
-                log.info(
-                    "Mixed-Precision Layer {} set to FLOAT STRICT data type".format(
-                        layer.name
-                    )
-                )
-
     def create_network(self, onnx_path):
         """
         Parse the ONNX graph and create the corresponding TensorRT network definition.
@@ -103,7 +82,6 @@ class EngineBuilder:
         self.network_infos = self.builder, self.network, _ = network_from_onnx_path(
             onnx_path, flags=[trt.OnnxParserFlag.NATIVE_INSTANCENORM]
         )
-        # self.set_mixed_precision()
 
         inputs = [self.network.get_input(i) for i in range(self.network.num_inputs)]
         outputs = [self.network.get_output(i) for i in range(self.network.num_outputs)]

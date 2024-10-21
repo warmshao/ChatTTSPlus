@@ -16,9 +16,7 @@ from examples.web.ex import ex
 
 def main():
     with gr.Blocks() as demo:
-        gr.Markdown("# ChatTTS WebUI")
-        gr.Markdown("- **GitHub Repo**: https://github.com/2noise/ChatTTS")
-        gr.Markdown("- **HuggingFace Repo**: https://huggingface.co/2Noise/ChatTTS")
+        gr.Markdown("# ChatTTSPlus WebUI")
 
         with gr.Row():
             with gr.Column(scale=2):

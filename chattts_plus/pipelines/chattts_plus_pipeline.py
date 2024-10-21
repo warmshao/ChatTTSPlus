@@ -2,6 +2,7 @@
 # @Time    : 2024/9/22 18:06
 # @Project : ChatTTSPlus
 # @FileName: chattts_plus_pipeline.py
+import math
 import os.path
 import pdb
 import time
@@ -349,6 +350,15 @@ class ChatTTSPlusPipeline:
         self.logger.info("Finish text normalization: ")
         self.logger.info(text)
 
+        if len(text) > 4:
+            self.logger.warn(f"len of text is {len(text)} > 4, only support max batchsize=4")
+            text_r = []
+            chunk_size = len(text) // 4
+            start_ind = 0
+            while start_ind < len(text):
+                text_r.append("".join(text[start_ind:start_ind+chunk_size]))
+                start_ind += chunk_size
+            text = text_r
         # refine text
         if not skip_refine_text:
             self.logger.info("Process Text Refinement >>>")

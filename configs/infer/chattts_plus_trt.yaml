@@ -72,13 +72,13 @@ MODELS:
       trt_model_path: "checkpoints/chattts_plus_onnx/chattts_llama.trt"
       output_max_shapes:
         hidden_states:
-          - 8
+          - 4
           - 2048
           - 768
         cur_key_values:
           - 20
           - 2
-          - 8
+          - 4
           - 12
           - 2048
           - 64
