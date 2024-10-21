@@ -10,6 +10,7 @@ import lzma
 import torch
 import torchaudio
 import vocos
+from tqdm import tqdm
 import numpy as np
 import pybase16384 as b14
 from numpy import dtype
@@ -291,7 +292,7 @@ class ChatTTSPlusPipeline:
 
     def _infer(
             self,
-            text,
+            text_in,
             stream=False,
             lang=None,
             skip_refine_text=False,
@@ -305,14 +306,14 @@ class ChatTTSPlusPipeline:
             **kwargs
     ):
 
-        if not isinstance(text, list):
-            text = [text]
+        if not isinstance(text_in, list):
+            text_in = [text_in]
 
         # 参考chattts-ui做分割、合并以及数字转换等优化
         if do_text_optimization:
             self.logger.info("Optimization on text, such as split, merge and so on")
             text_list = []
-            for text_ in text:
+            for text_ in text_in:
                 text_list.extend([t.strip() for t in text_.split("\n") if t.strip()])
             new_text = text_utils.split_text(text_list)
             retext = []
@@ -334,80 +335,78 @@ class ChatTTSPlusPipeline:
             for ti in range(len(retext)):
                 if not retext[ti].strip().endswith("[uv_break]"):
                     retext[ti] += " [uv_break]"
-            text = retext
+            text_in = retext
             self.logger.info("Finish text optimization: ")
-            self.logger.info(text)
+            self.logger.info(text_in)
 
-        text = [
+        text_in = [
             self.normalizer(
                 t,
                 do_text_normalization,
                 do_homophone_replacement,
                 lang,
             )
-            for t in text
+            for t in text_in
         ]
         self.logger.info("Finish text normalization: ")
-        self.logger.info(text)
+        self.logger.info(text_in)
 
-        if len(text) > 4:
-            self.logger.warn(f"len of text is {len(text)} > 4, only support max batchsize=4")
-            text_r = []
-            chunk_size = len(text) // 4
-            start_ind = 0
-            while start_ind < len(text):
-                text_r.append("".join(text[start_ind:start_ind+chunk_size]))
-                start_ind += chunk_size
-            text = text_r
-        # refine text
-        if not skip_refine_text:
-            self.logger.info("Process Text Refinement >>>")
-            refined = self._refine_text(
-                text,
-                params_refine_text
-            )
-            text_tokens = refined.ids
-            text_tokens = [i[i.less(self.models_dict["tokenizer"].break_0_ids)] for i in text_tokens]
-            text = self.models_dict["tokenizer"].decode(text_tokens)
-            self.logger.info("Refine text: ")
-            self.logger.info(text)
-            if refine_text_only:
-                yield text
-                return
+        slice_size = 4
+        if len(text_in) > slice_size:
+            self.logger.warn(
+                f"len of text is {len(text_in)} > 4, only support max batchsize=4, so we need to slice to inference")
 
-        if stream:
-            length = 0
-            pass_batch_count = 0
-        for result in self._infer_code(
-                text,
-                stream,
-                use_decoder,
-                params_infer_code,
-        ):
-            wavs = self._decode_to_wavs(
-                result.hiddens if use_decoder else result.ids,
-                use_decoder,
-            )
+        for ii in tqdm(range(0, len(text_in), slice_size)):
+            text = text_in[ii:ii + slice_size].copy()
+            # refine text
+            if not skip_refine_text:
+                self.logger.info("Process Text Refinement >>>")
+                refined = self._refine_text(
+                    text,
+                    params_refine_text
+                )
+                text_tokens = refined.ids
+                text_tokens = [i[i.less(self.models_dict["tokenizer"].break_0_ids)] for i in text_tokens]
+                text = self.models_dict["tokenizer"].decode(text_tokens)
+                self.logger.info("Refine text: ")
+                self.logger.info(text)
+                if refine_text_only:
+                    yield text
+                    return
+
             if stream:
-                pass_batch_count += 1
-                if pass_batch_count <= params_infer_code.pass_first_n_batches:
-                    continue
-                a = length
-                b = a + params_infer_code.stream_speed
-                if b > wavs.shape[1]:
-                    b = wavs.shape[1]
-                new_wavs = wavs[:, a:b]
-                length = b
-                yield new_wavs
-            else:
-                yield wavs
-        if stream:
-            new_wavs = wavs[:, length:]
-            # Identify rows with non-zero elements using np.any
-            # keep_rows = np.any(array != 0, axis=1)
-            keep_cols = np.sum(new_wavs != 0, axis=0) > 0
-            # Filter both rows and columns using slicing
-            yield new_wavs[:][:, keep_cols]
+                length = 0
+                pass_batch_count = 0
+            for result in self._infer_code(
+                    text,
+                    stream,
+                    use_decoder,
+                    params_infer_code,
+            ):
+                wavs = self._decode_to_wavs(
+                    result.hiddens if use_decoder else result.ids,
+                    use_decoder,
+                )
+                if stream:
+                    pass_batch_count += 1
+                    if pass_batch_count <= params_infer_code.pass_first_n_batches:
+                        continue
+                    a = length
+                    b = a + params_infer_code.stream_speed
+                    if b > wavs.shape[1]:
+                        b = wavs.shape[1]
+                    new_wavs = wavs[:, a:b]
+                    length = b
+                    yield new_wavs
+                else:
+                    yield wavs
+            if stream:
+                new_wavs = wavs[:, length:]
+                # Identify rows with non-zero elements using np.any
+                # keep_rows = np.any(array != 0, axis=1)
+                keep_cols = np.sum(new_wavs != 0, axis=0) > 0
+                # Filter both rows and columns using slicing
+                yield new_wavs[:][:, keep_cols]
 
     @torch.no_grad()
     def infer(self,
@@ -474,7 +473,5 @@ class ChatTTSPlusPipeline:
             params_infer_code,
             **kwargs
         )
-        if stream:
-            return res_gen
-        else:
-            return next(res_gen)
+
+        return res_gen

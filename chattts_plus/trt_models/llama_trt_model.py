@@ -70,7 +70,7 @@ class LlamaTRTModel(BaseModel):
             else:
                 out_shape = cur_input_shape[:]
                 out_tensor = preds_dict[out["name"]][:np.prod(out_shape)].reshape(*out_shape)
-                outs.append(out_tensor)
+                outs.append(out_tensor.clone())
         nvtx.range_pop()
         return outs
 
