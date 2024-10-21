@@ -374,7 +374,6 @@ class ChatTTSPlusPipeline:
                 use_decoder,
                 params_infer_code,
         ):
-            pdb.set_trace()
             wavs = self._decode_to_wavs(
                 result.hiddens if use_decoder else result.ids,
                 use_decoder,
