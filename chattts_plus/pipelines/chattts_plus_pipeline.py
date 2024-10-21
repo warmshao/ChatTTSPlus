@@ -249,24 +249,17 @@ class ChatTTSPlusPipeline:
     ):
         self.logger.info("Start decode to wavs >>>>")
         decoder = self.models_dict["dvae_decode"] if use_decoder else self.models_dict["dvae_encode"]
-        max_x_len = -1
+        wavs = []
         if len(result_list) == 0:
-            return np.array([], dtype=np.float32)
-        for result in result_list:
-            if result.size(0) > max_x_len:
-                max_x_len = result.size(0)
-        batch_result = torch.zeros(
-            (len(result_list), result_list[0].size(1), max_x_len),
-            dtype=result_list[0].dtype,
-            device=result_list[0].device,
-        )
+            return wavs
+
         for i in range(len(result_list)):
-            src = result_list[i]
-            batch_result[i].narrow(1, 0, src.size(0)).copy_(src.permute(1, 0))
-        mel_specs = decoder(batch_result).to(dtype=next(self.models_dict["vocos"].parameters()).dtype)
-        if "mps" in str(mel_specs.device):
-            mel_specs = mel_specs.to(device=torch.device("cpu"))
-        wavs = self.models_dict["vocos"].decode(mel_specs)
+            src = result_list[i].permute(1, 0)
+            mel_specs = decoder(src[None]).to(dtype=next(self.models_dict["vocos"].parameters()).dtype)
+            if "mps" in str(mel_specs.device):
+                mel_specs = mel_specs.to(device=torch.device("cpu"))
+            wav_ = self.models_dict["vocos"].decode(mel_specs)
+            wavs.append(wav_[0])
         return wavs
 
     def sample_random_speaker(self) -> str:
@@ -381,6 +374,7 @@ class ChatTTSPlusPipeline:
                 use_decoder,
                 params_infer_code,
         ):
+            pdb.set_trace()
             wavs = self._decode_to_wavs(
                 result.hiddens if use_decoder else result.ids,
                 use_decoder,

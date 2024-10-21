@@ -1,3 +1,4 @@
+import pdb
 import platform
 from dataclasses import dataclass
 import logging
@@ -405,9 +406,7 @@ class GPT(nn.Module):
                     ]
                     emb = torch.stack(code_emb, 3).sum(3)
             model_input.inputs_embeds = emb
-
             model_input.to(emb.device, emb.dtype)
-
             outputs: BaseModelOutputWithPast = self.gpt(
                 attention_mask=model_input.attention_mask,
                 position_ids=model_input.position_ids,
@@ -422,7 +421,6 @@ class GPT(nn.Module):
             past_key_values = outputs.past_key_values
             if return_hidden:
                 hiddens.append(hidden_states.narrow(1, -1, 1).squeeze_(1))
-
             with P.cached():
                 if infer_text:
                     logits: torch.Tensor = self.head_text(hidden_states)

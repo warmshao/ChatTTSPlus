@@ -32,7 +32,7 @@ class LlamaTRTModel(BaseModel):
         self.kv_ind = 1
 
     def get_cur_kv_caches(self):
-        return self.kv_caches[:, :, :, :, 1:self.kv_ind].clone()
+        return self.kv_caches[:, :, :, :, 1:self.kv_ind]
 
     def input_process(self, *data, **kwargs):
         return data
@@ -70,7 +70,7 @@ class LlamaTRTModel(BaseModel):
             else:
                 out_shape = cur_input_shape[:]
                 out_tensor = preds_dict[out["name"]][:np.prod(out_shape)].reshape(*out_shape)
-                outs.append(out_tensor.clone())
+                outs.append(out_tensor)
         nvtx.range_pop()
         return outs
 

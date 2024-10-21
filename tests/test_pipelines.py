@@ -3,6 +3,7 @@
 # @Project : ChatTTSPlus
 # @FileName: test_pipelines.py
 import os
+import pdb
 
 
 def test_chattts_plus_pipeline():
@@ -34,7 +35,8 @@ def test_chattts_plus_pipeline():
         temperature=0.3,
         max_new_token=384
     )
-    infer_text = "一场雨后，天空和地面互换了身份，抬头万里暗淡，足下星河生辉。这句话真是绝了.你觉得呢.哈哈哈哈"
+    infer_text = ["一场雨后，天空和地面互换了身份，抬头万里暗淡，足下星河生辉。这句话真是绝了.你觉得呢.哈哈哈哈",
+                  "本邮件内容是根据招商银行客户提供的个人邮箱发送给其本人的电子邮件，如您并非抬头标明的收件人，请您即刻删除本邮件，勿以任何形式使用及传播本邮件内容，谢谢！"]
     t0 = time.time()
     wavs = pipeline.infer(
         infer_text,
@@ -42,17 +44,17 @@ def test_chattts_plus_pipeline():
         params_infer_code=params_infer_code,
         use_decoder=True,
         stream=False,
-        skip_refine_text=False,
+        skip_refine_text=True,
         do_text_normalization=True,
         do_homophone_replacement=True,
         do_text_optimization=True,
-        speaker_emb_path=None
+        speaker_emb_path=speaker_emb_path
     )
     print("total infer time:{} sec".format(time.time() - t0))
     save_dir = "results/chattts_plus"
     os.makedirs(save_dir, exist_ok=True)
     audio_save_path = f"{save_dir}/{os.path.basename(speaker_emb_path)}-{time.time()}.wav"
-    torchaudio.save(audio_save_path, wavs[0].cpu().float().unsqueeze(0), 24000)
+    torchaudio.save(audio_save_path, torch.cat(wavs).cpu().float().unsqueeze(0), 24000)
     print(audio_save_path)
 
 
@@ -85,7 +87,10 @@ def test_chattts_plus_trt_pipeline():
         temperature=0.3,
         max_new_token=384
     )
-    infer_text = "一场雨后，天空和地面互换了身份，抬头万里暗淡，足下星河生辉。这句话真是绝了.你觉得呢.哈哈哈哈"
+    infer_text = [
+        "一场雨后，天空和地面互换了身份，抬头万里暗淡，足下星河生辉。这句话真是绝了.你觉得呢.哈哈哈哈",
+                  "本邮件内容是根据招商银行客户提供的个人邮箱发送给其本人的电子邮件，如您并非抬头标明的收件人，请您即刻删除本邮件，勿以任何形式使用及传播本邮件内容，谢谢！"
+                  ]
     t0 = time.time()
     wavs = pipeline.infer(
         infer_text,
@@ -93,17 +98,17 @@ def test_chattts_plus_trt_pipeline():
         params_infer_code=params_infer_code,
         use_decoder=True,
         stream=False,
-        skip_refine_text=False,
+        skip_refine_text=True,
         do_text_normalization=True,
         do_homophone_replacement=True,
         do_text_optimization=True,
-        speaker_emb_path=None
+        speaker_emb_path=speaker_emb_path
     )
     print("total infer time:{} sec".format(time.time() - t0))
     save_dir = "results/chattts_plus"
     os.makedirs(save_dir, exist_ok=True)
     audio_save_path = f"{save_dir}/{os.path.basename(speaker_emb_path)}-{time.time()}.wav"
-    torchaudio.save(audio_save_path, wavs[0].cpu().float().unsqueeze(0), 24000)
+    torchaudio.save(audio_save_path, torch.cat(wavs).cpu().float().unsqueeze(0), 24000)
     print(audio_save_path)
 
 
@@ -162,6 +167,6 @@ def test_chattts_plus_zero_shot_pipeline():
 
 
 if __name__ == '__main__':
-    test_chattts_plus_pipeline()
-    # test_chattts_plus_trt_pipeline()
+    # test_chattts_plus_pipeline()
+    test_chattts_plus_trt_pipeline()
     # test_chattts_plus_zero_shot_pipeline()

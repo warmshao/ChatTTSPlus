@@ -75,6 +75,13 @@ class GPT(nn.Module):
                 for _ in range(self.num_vq)
             ],
         )
+        self.model_path = kwargs.get("model_path", None)
+        if self.model_path:
+            self.logger.info(f"loading GPT pretrained model: {self.model_path}")
+            self.from_pretrained(self.model_path)
+
+    def from_pretrained(self, file_path: str):
+        self.load_state_dict(torch.load(file_path, weights_only=True, mmap=True), strict=False)
 
     class Context:
         def __init__(self):
@@ -103,7 +110,8 @@ class GPT(nn.Module):
         else:
             llama_config = LlamaConfig(**config)
 
-        model = LlamaTRTModel(predict_type="trt", **kwargs)
+        model = LlamaTRTModel(predict_type="trt", model_path=kwargs.get("trt_model_path"),
+                              output_max_shapes=kwargs.get("output_max_shapes"))
 
         return model, llama_config
 
@@ -374,7 +382,6 @@ class GPT(nn.Module):
         past_key_values = None
         # need to create kv cache first
         self.gpt.create_kv_cache(inputs_ids.size(0))
-
         for i in range(max_new_token):
 
             model_input = self._prepare_generation_inputs(
@@ -396,7 +403,8 @@ class GPT(nn.Module):
                     emb = torch.stack(code_emb, 3).sum(3)
             model_input.inputs_embeds = emb
             model_input.to(emb.device, dtype=emb.dtype)
-            hidden_states = self.gpt.predict(model_input.inputs_embeds, model_input.position_ids)
+            hidden_states = self.gpt.predict(model_input.inputs_embeds, model_input.attention_mask,
+                                             model_input.position_ids)
             hidden_states = hidden_states.to(emb.device, dtype=emb.dtype)
             past_key_values = self.gpt.get_cur_kv_caches()
             attentions.append(None)

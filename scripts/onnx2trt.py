@@ -60,10 +60,11 @@ class EngineBuilder:
         profile = self.builder.create_optimization_profile()
 
         # GPT
-        profile.set_shape("inputs_embeds", min=[1, 1, 768], opt=[4, 1, 768], max=[8, 2048, 768])
-        profile.set_shape("position_ids", min=[1, 1], opt=[4, 1], max=[8, 2048])
-        profile.set_shape("past_key_values", min=[20, 2, 1, 12, 1, 64], opt=[20, 2, 4, 12, 256, 64],
-                          max=[20, 2, 8, 12, 2048, 64])
+        profile.set_shape("inputs_embeds", min=[1, 1, 768], opt=[2, 1, 768], max=[4, 2048, 768])
+        profile.set_shape("attention_mask", min=[1, 1], opt=[2, 64], max=[4, 2048])
+        profile.set_shape("position_ids", min=[1, 1], opt=[2, 1], max=[4, 2048])
+        profile.set_shape("past_key_values", min=[20, 2, 1, 12, 1, 64], opt=[20, 2, 2, 12, 256, 64],
+                          max=[20, 2, 4, 12, 2048, 64])
 
         self.config.add_optimization_profile(profile)
 
