@@ -15,6 +15,7 @@ import numpy as np
 import pybase16384 as b14
 from numpy import dtype
 from typing import Literal, Optional, List, Tuple, Dict, Union
+from huggingface_hub import hf_hub_download
 
 from ..commons import text_utils, logger
 from .. import models
@@ -23,6 +24,7 @@ from ..commons import constants
 from ..commons import norm
 from ..commons.utils import RefineTextParams, InferCodeParams
 from ..models import processors
+from ..commons.onnx2trt import convert_onnx_to_trt
 
 
 class ChatTTSPlusPipeline:
@@ -56,6 +58,7 @@ class ChatTTSPlusPipeline:
         if coef is None:
             coef_ = torch.rand(100)
             coef = b14.encode_to_string(coef_.numpy().astype(np.float32).tobytes())
+        self.dave_coef = coef
         self.logger.info("DVAE coef: {}".format(coef))
         if "dvae_encode" in self.cfg.MODELS:
             self.cfg.MODELS["dvae_encode"]["kwargs"]["coef"] = coef
@@ -66,7 +69,27 @@ class ChatTTSPlusPipeline:
             self.logger.info(self.cfg.MODELS[model_name])
             model_path_org = self.cfg.MODELS[model_name]["kwargs"]["model_path"]
             model_path_new = os.path.join(constants.CHECKPOINT_DIR, model_path_org.replace("checkpoints/", ""))
+            if not os.path.exists(model_path_new):
+                self.logger.warn(f"{model_path_new} not exists! Need to download from HuggingFace")
+                hf_hub_download(repo_id="2Noise/ChatTTS", subfolder="asset",
+                                filename=os.path.basename(model_path_new),
+                                local_dir=constants.CHECKPOINT_DIR)
+                self.logger.info(f"download {model_path_new} from 2Noise/ChatTTS")
             self.cfg.MODELS[model_name]["kwargs"]["model_path"] = model_path_new
+            trt_model_path_org = self.cfg.MODELS[model_name]["kwargs"].get("trt_model_path", None)
+            if trt_model_path_org is not None:
+                trt_model_path_new = os.path.join(constants.CHECKPOINT_DIR,
+                                                  trt_model_path_org.replace("checkpoints/", ""))
+                self.cfg.MODELS[model_name]["kwargs"]["trt_model_path"] = trt_model_path_new
+                if not os.path.exists(trt_model_path_new):
+                    self.logger.warn(f"{trt_model_path_new} not exists! Need to download from HuggingFace")
+                    onnx_model_path_new = trt_model_path_new[:-4] + ".onnx"
+                    hf_hub_download(repo_id="warmshao/ChatTTSPlus",
+                                    filename=os.path.basename(onnx_model_path_new),
+                                    local_dir=constants.CHECKPOINT_DIR)
+                    self.logger.info(f"download {onnx_model_path_new} from 2Noise/ChatTTS")
+                    self.logger.info(f"Now convert {onnx_model_path_new} to trt")
+                    convert_onnx_to_trt(onnx_model_path_new, trt_model_path_new)
             if model_name.lower() == "vocos":
                 import vocos.feature_extractors
                 import vocos.models
@@ -102,6 +125,12 @@ class ChatTTSPlusPipeline:
                     self.models_dict[model_name] = model_
 
         spk_stat_path = os.path.join(constants.CHECKPOINT_DIR, "asset/spk_stat.pt")
+        if not os.path.exists(spk_stat_path):
+            self.logger.warn(f"{spk_stat_path} not exists! Need to download from HuggingFace")
+            hf_hub_download(repo_id="2Noise/ChatTTS", subfolder="asset",
+                            filename=os.path.basename(spk_stat_path),
+                            local_dir=constants.CHECKPOINT_DIR)
+            self.logger.info(f"download {spk_stat_path} from 2Noise/ChatTTS")
         self.logger.info(f"loading speaker stat: {spk_stat_path}")
         assert os.path.exists(spk_stat_path), f"Missing spk_stat.pt: {spk_stat_path}"
         spk_stat: torch.Tensor = torch.load(
@@ -111,7 +140,13 @@ class ChatTTSPlusPipeline:
         ).to(self.device, dtype=self.dtype)
         self.std, self.mean = spk_stat.chunk(2)
 
-        normalizer_json = os.path.join(constants.PROJECT_DIR, "assets", "homophones_map.json")
+        normalizer_json = os.path.join(constants.CHECKPOINT_DIR, "homophones_map.json")
+        if not os.path.exists(normalizer_json):
+            self.logger.warn(f"{normalizer_json} not exists! Need to download from HuggingFace")
+            hf_hub_download(repo_id="warmshao/ChatTTSPlus",
+                            filename=os.path.basename(normalizer_json),
+                            local_dir=constants.CHECKPOINT_DIR)
+            self.logger.info(f"download {normalizer_json} from warmshao/ChatTTSPlus")
         self.logger.info(f"loading normalizer: {normalizer_json}")
         self.normalizer = norm.Normalizer(normalizer_json)
 

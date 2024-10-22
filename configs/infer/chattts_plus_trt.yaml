@@ -69,7 +69,7 @@ MODELS:
     infer_type: "trt"
     kwargs:
       model_path: "checkpoints/asset/GPT.pt"
-      trt_model_path: "checkpoints/chattts_plus_onnx/chattts_llama.trt"
+      trt_model_path: "checkpoints/chattts_llama.trt"
       output_max_shapes:
         hidden_states:
           - 4

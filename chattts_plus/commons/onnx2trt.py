@@ -134,12 +134,12 @@ class EngineBuilder:
         return 0
 
 
-def main(args):
-    builder = EngineBuilder(args.verbose)
-    builder.create_network(args.onnx)
+def convert_onnx_to_trt(onnx_path, trt_path, verbose=False, precision="fp16"):
+    builder = EngineBuilder(verbose)
+    builder.create_network(onnx_path)
     builder.create_engine(
-        args.engine,
-        args.precision
+        trt_path,
+        precision
     )
 
 
@@ -158,4 +158,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.engine is None:
         args.engine = args.onnx.replace(".onnx", ".trt")
-    main(args)
+    convert_onnx_to_trt(args.onnx, args.engine, args.verbose, args.precision)
