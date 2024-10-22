@@ -2,6 +2,7 @@
 # @Time    : 2024/9/22 18:06
 # @Project : ChatTTSPlus
 # @FileName: chattts_plus_pipeline.py
+import math
 import os.path
 import pdb
 import time
@@ -9,10 +10,12 @@ import lzma
 import torch
 import torchaudio
 import vocos
+from tqdm import tqdm
 import numpy as np
 import pybase16384 as b14
 from numpy import dtype
 from typing import Literal, Optional, List, Tuple, Dict, Union
+from huggingface_hub import hf_hub_download
 
 from ..commons import text_utils, logger
 from .. import models
@@ -21,6 +24,7 @@ from ..commons import constants
 from ..commons import norm
 from ..commons.utils import RefineTextParams, InferCodeParams
 from ..models import processors
+from ..commons.onnx2trt import convert_onnx_to_trt
 
 
 class ChatTTSPlusPipeline:
@@ -54,6 +58,7 @@ class ChatTTSPlusPipeline:
         if coef is None:
             coef_ = torch.rand(100)
             coef = b14.encode_to_string(coef_.numpy().astype(np.float32).tobytes())
+        self.dave_coef = coef
         self.logger.info("DVAE coef: {}".format(coef))
         if "dvae_encode" in self.cfg.MODELS:
             self.cfg.MODELS["dvae_encode"]["kwargs"]["coef"] = coef
@@ -64,7 +69,27 @@ class ChatTTSPlusPipeline:
             self.logger.info(self.cfg.MODELS[model_name])
             model_path_org = self.cfg.MODELS[model_name]["kwargs"]["model_path"]
             model_path_new = os.path.join(constants.CHECKPOINT_DIR, model_path_org.replace("checkpoints/", ""))
+            if not os.path.exists(model_path_new):
+                self.logger.warn(f"{model_path_new} not exists! Need to download from HuggingFace")
+                hf_hub_download(repo_id="2Noise/ChatTTS", subfolder="asset",
+                                filename=os.path.basename(model_path_new),
+                                local_dir=constants.CHECKPOINT_DIR)
+                self.logger.info(f"download {model_path_new} from 2Noise/ChatTTS")
             self.cfg.MODELS[model_name]["kwargs"]["model_path"] = model_path_new
+            trt_model_path_org = self.cfg.MODELS[model_name]["kwargs"].get("trt_model_path", None)
+            if trt_model_path_org is not None:
+                trt_model_path_new = os.path.join(constants.CHECKPOINT_DIR,
+                                                  trt_model_path_org.replace("checkpoints/", ""))
+                self.cfg.MODELS[model_name]["kwargs"]["trt_model_path"] = trt_model_path_new
+                if not os.path.exists(trt_model_path_new):
+                    self.logger.warn(f"{trt_model_path_new} not exists! Need to download from HuggingFace")
+                    onnx_model_path_new = trt_model_path_new[:-4] + ".onnx"
+                    hf_hub_download(repo_id="warmshao/ChatTTSPlus",
+                                    filename=os.path.basename(onnx_model_path_new),
+                                    local_dir=constants.CHECKPOINT_DIR)
+                    self.logger.info(f"download {onnx_model_path_new} from 2Noise/ChatTTS")
+                    self.logger.info(f"Now convert {onnx_model_path_new} to trt")
+                    convert_onnx_to_trt(onnx_model_path_new, trt_model_path_new)
             if model_name.lower() == "vocos":
                 import vocos.feature_extractors
                 import vocos.models
@@ -94,9 +119,18 @@ class ChatTTSPlusPipeline:
                         model_.eval().to(self.device, dtype=self.dtype)
                         self.models_dict[model_name] = model_
                 elif self.cfg.MODELS[model_name]["infer_type"] == "trt":
-                    raise NotImplementedError
+                    model_ = getattr(trt_models, self.cfg.MODELS[model_name]["name"])(
+                        **self.cfg.MODELS[model_name]["kwargs"])
+                    model_.eval().to(self.device, dtype=self.dtype)
+                    self.models_dict[model_name] = model_
 
         spk_stat_path = os.path.join(constants.CHECKPOINT_DIR, "asset/spk_stat.pt")
+        if not os.path.exists(spk_stat_path):
+            self.logger.warn(f"{spk_stat_path} not exists! Need to download from HuggingFace")
+            hf_hub_download(repo_id="2Noise/ChatTTS", subfolder="asset",
+                            filename=os.path.basename(spk_stat_path),
+                            local_dir=constants.CHECKPOINT_DIR)
+            self.logger.info(f"download {spk_stat_path} from 2Noise/ChatTTS")
         self.logger.info(f"loading speaker stat: {spk_stat_path}")
         assert os.path.exists(spk_stat_path), f"Missing spk_stat.pt: {spk_stat_path}"
         spk_stat: torch.Tensor = torch.load(
@@ -106,7 +140,13 @@ class ChatTTSPlusPipeline:
         ).to(self.device, dtype=self.dtype)
         self.std, self.mean = spk_stat.chunk(2)
 
-        normalizer_json = os.path.join(constants.PROJECT_DIR, "assets", "homophones_map.json")
+        normalizer_json = os.path.join(constants.CHECKPOINT_DIR, "homophones_map.json")
+        if not os.path.exists(normalizer_json):
+            self.logger.warn(f"{normalizer_json} not exists! Need to download from HuggingFace")
+            hf_hub_download(repo_id="warmshao/ChatTTSPlus",
+                            filename=os.path.basename(normalizer_json),
+                            local_dir=constants.CHECKPOINT_DIR)
+            self.logger.info(f"download {normalizer_json} from warmshao/ChatTTSPlus")
         self.logger.info(f"loading normalizer: {normalizer_json}")
         self.normalizer = norm.Normalizer(normalizer_json)
 
@@ -211,7 +251,6 @@ class ChatTTSPlusPipeline:
             top_K=params.top_K,
             repetition_penalty=params.repetition_penalty,
         )
-
         emb = self.models_dict["gpt"](input_ids, text_mask)
 
         result = next(
@@ -247,24 +286,17 @@ class ChatTTSPlusPipeline:
     ):
         self.logger.info("Start decode to wavs >>>>")
         decoder = self.models_dict["dvae_decode"] if use_decoder else self.models_dict["dvae_encode"]
-        max_x_len = -1
+        wavs = []
         if len(result_list) == 0:
-            return np.array([], dtype=np.float32)
-        for result in result_list:
-            if result.size(0) > max_x_len:
-                max_x_len = result.size(0)
-        batch_result = torch.zeros(
-            (len(result_list), result_list[0].size(1), max_x_len),
-            dtype=result_list[0].dtype,
-            device=result_list[0].device,
-        )
+            return wavs
+
         for i in range(len(result_list)):
-            src = result_list[i]
-            batch_result[i].narrow(1, 0, src.size(0)).copy_(src.permute(1, 0))
-        mel_specs = decoder(batch_result).to(dtype=next(self.models_dict["vocos"].parameters()).dtype)
-        if "mps" in str(mel_specs.device):
-            mel_specs = mel_specs.to(device=torch.device("cpu"))
-        wavs = self.models_dict["vocos"].decode(mel_specs)
+            src = result_list[i].permute(1, 0)
+            mel_specs = decoder(src[None]).to(dtype=next(self.models_dict["vocos"].parameters()).dtype)
+            if "mps" in str(mel_specs.device):
+                mel_specs = mel_specs.to(device=torch.device("cpu"))
+            wav_ = self.models_dict["vocos"].decode(mel_specs)
+            wavs.append(wav_[0])
         return wavs
 
     def sample_random_speaker(self) -> str:
@@ -285,7 +317,7 @@ class ChatTTSPlusPipeline:
 
     @torch.no_grad()
     def _sample_random_speaker(self) -> torch.Tensor:
-        dim: int = self.models_dict["gpt"].gpt.layers[0].mlp.gate_proj.in_features
+        dim: int = self.std.shape[-1]
         spk = (
             torch.randn(dim, device=self.std.device, dtype=self.std.dtype)
             .mul_(self.std)
@@ -295,7 +327,7 @@ class ChatTTSPlusPipeline:
 
     def _infer(
             self,
-            text,
+            text_in,
             stream=False,
             lang=None,
             skip_refine_text=False,
@@ -309,14 +341,14 @@ class ChatTTSPlusPipeline:
             **kwargs
     ):
 
-        if not isinstance(text, list):
-            text = [text]
+        if not isinstance(text_in, list):
+            text_in = [text_in]
 
         # 参考chattts-ui做分割、合并以及数字转换等优化
         if do_text_optimization:
             self.logger.info("Optimization on text, such as split, merge and so on")
             text_list = []
-            for text_ in text:
+            for text_ in text_in:
                 text_list.extend([t.strip() for t in text_.split("\n") if t.strip()])
             new_text = text_utils.split_text(text_list)
             retext = []
@@ -338,71 +370,78 @@ class ChatTTSPlusPipeline:
             for ti in range(len(retext)):
                 if not retext[ti].strip().endswith("[uv_break]"):
                     retext[ti] += " [uv_break]"
-            text = retext
+            text_in = retext
             self.logger.info("Finish text optimization: ")
-            self.logger.info(text)
+            self.logger.info(text_in)
 
-        text = [
+        text_in = [
             self.normalizer(
                 t,
                 do_text_normalization,
                 do_homophone_replacement,
                 lang,
             )
-            for t in text
+            for t in text_in
         ]
         self.logger.info("Finish text normalization: ")
-        self.logger.info(text)
+        self.logger.info(text_in)
 
-        # refine text
-        if not skip_refine_text:
-            self.logger.info("Process Text Refinement >>>")
-            refined = self._refine_text(
-                text,
-                params_refine_text
-            )
-            text_tokens = refined.ids
-            text_tokens = [i[i.less(self.models_dict["tokenizer"].break_0_ids)] for i in text_tokens]
-            text = self.models_dict["tokenizer"].decode(text_tokens)
-            self.logger.info("Refine text: ")
-            self.logger.info(text)
-            if refine_text_only:
-                yield text
-                return
+        slice_size = 4
+        if len(text_in) > slice_size:
+            self.logger.warn(
+                f"len of text is {len(text_in)} > 4, only support max batchsize=4, so we need to slice to inference")
 
-        if stream:
-            length = 0
-            pass_batch_count = 0
-        for result in self._infer_code(
-                text,
-                stream,
-                use_decoder,
-                params_infer_code,
-        ):
-            wavs = self._decode_to_wavs(
-                result.hiddens if use_decoder else result.ids,
-                use_decoder,
-            )
+        for ii in tqdm(range(0, len(text_in), slice_size)):
+            text = text_in[ii:ii + slice_size].copy()
+            # refine text
+            if not skip_refine_text:
+                self.logger.info("Process Text Refinement >>>")
+                refined = self._refine_text(
+                    text,
+                    params_refine_text
+                )
+                text_tokens = refined.ids
+                text_tokens = [i[i.less(self.models_dict["tokenizer"].break_0_ids)] for i in text_tokens]
+                text = self.models_dict["tokenizer"].decode(text_tokens)
+                self.logger.info("Refine text: ")
+                self.logger.info(text)
+                if refine_text_only:
+                    yield text
+                    return
+
             if stream:
-                pass_batch_count += 1
-                if pass_batch_count <= params_infer_code.pass_first_n_batches:
-                    continue
-                a = length
-                b = a + params_infer_code.stream_speed
-                if b > wavs.shape[1]:
-                    b = wavs.shape[1]
-                new_wavs = wavs[:, a:b]
-                length = b
-                yield new_wavs
-            else:
-                yield wavs
-        if stream:
-            new_wavs = wavs[:, length:]
-            # Identify rows with non-zero elements using np.any
-            # keep_rows = np.any(array != 0, axis=1)
-            keep_cols = np.sum(new_wavs != 0, axis=0) > 0
-            # Filter both rows and columns using slicing
-            yield new_wavs[:][:, keep_cols]
+                length = 0
+                pass_batch_count = 0
+            for result in self._infer_code(
+                    text,
+                    stream,
+                    use_decoder,
+                    params_infer_code,
+            ):
+                wavs = self._decode_to_wavs(
+                    result.hiddens if use_decoder else result.ids,
+                    use_decoder,
+                )
+                if stream:
+                    pass_batch_count += 1
+                    if pass_batch_count <= params_infer_code.pass_first_n_batches:
+                        continue
+                    a = length
+                    b = a + params_infer_code.stream_speed
+                    if b > wavs.shape[1]:
+                        b = wavs.shape[1]
+                    new_wavs = wavs[:, a:b]
+                    length = b
+                    yield new_wavs
+                else:
+                    yield wavs
+            if stream:
+                new_wavs = wavs[:, length:]
+                # Identify rows with non-zero elements using np.any
+                # keep_rows = np.any(array != 0, axis=1)
+                keep_cols = np.sum(new_wavs != 0, axis=0) > 0
+                # Filter both rows and columns using slicing
+                yield new_wavs[:][:, keep_cols]
 
     @torch.no_grad()
     def infer(self,
@@ -469,7 +508,5 @@ class ChatTTSPlusPipeline:
             params_infer_code,
             **kwargs
         )
-        if stream:
-            return res_gen
-        else:
-            return next(res_gen)
+
+        return res_gen

@@ -16,8 +16,8 @@ from transformers.cache_utils import Cache
 from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.utils import is_flash_attn_2_available
 
-from .llama import LlamaModel
-from .processors import CustomRepetitionPenaltyLogitsProcessorRepeat
+from .llama_trt_model import LlamaTRTModel
+from ..models.processors import CustomRepetitionPenaltyLogitsProcessorRepeat
 from ..commons import logger
 
 
@@ -37,10 +37,10 @@ class GPT(nn.Module):
         self.num_audio_tokens = num_audio_tokens
 
         self.use_flash_attn = use_flash_attn
-
-        self.gpt, self.llama_config = self._build_llama(gpt_config)
+        self.gpt_config = gpt_config
+        self.gpt, self.llama_config = self._build_llama(gpt_config, **kwargs)
         self.is_te_llama = False
-        self.model_dim = int(self.gpt.config.hidden_size)
+        self.model_dim = int(gpt_config["hidden_size"])
         self.emb_code = nn.ModuleList(
             [
                 nn.Embedding(
@@ -75,14 +75,13 @@ class GPT(nn.Module):
                 for _ in range(self.num_vq)
             ],
         )
-
         self.model_path = kwargs.get("model_path", None)
         if self.model_path:
             self.logger.info(f"loading GPT pretrained model: {self.model_path}")
             self.from_pretrained(self.model_path)
 
     def from_pretrained(self, file_path: str):
-        self.load_state_dict(torch.load(file_path, weights_only=True, mmap=True))
+        self.load_state_dict(torch.load(file_path, weights_only=True, mmap=True), strict=False)
 
     class Context:
         def __init__(self):
@@ -97,7 +96,8 @@ class GPT(nn.Module):
     def _build_llama(
             self,
             config: dict,
-    ) -> Tuple[LlamaModel, LlamaConfig]:
+            **kwargs
+    ):
 
         if self.use_flash_attn and is_flash_attn_2_available():
             llama_config = LlamaConfig(
@@ -110,8 +110,9 @@ class GPT(nn.Module):
         else:
             llama_config = LlamaConfig(**config)
 
-        model = LlamaModel(llama_config)
-        del model.embed_tokens
+        model = LlamaTRTModel(predict_type="trt", model_path=kwargs.get("trt_model_path"),
+                              output_max_shapes=kwargs.get("output_max_shapes"))
+
         return model, llama_config
 
     def __call__(
@@ -181,12 +182,6 @@ class GPT(nn.Module):
         # With static cache, the `past_key_values` is None
         # TODO joao: standardize interface for the different Cache classes and remove of this if
         has_static_cache = False
-        if past_key_values is None:
-            if hasattr(self.gpt.layers[0], "self_attn"):
-                past_key_values = getattr(
-                    self.gpt.layers[0].self_attn, "past_key_value", None
-                )
-            has_static_cache = past_key_values is not None
 
         past_length = 0
         if past_key_values is not None:
@@ -239,7 +234,7 @@ class GPT(nn.Module):
             # create position_ids on the fly for batch generation
             position_ids = attention_mask.long().cumsum(-1) - 1
             position_ids.masked_fill_(attention_mask.eq(0), 1)
-            if past_key_values:
+            if past_key_values is not None:
                 position_ids = position_ids.narrow(
                     1, -input_ids.shape[1], input_ids.shape[1]
                 )
@@ -385,7 +380,8 @@ class GPT(nn.Module):
             )
 
         past_key_values = None
-
+        # need to create kv cache first
+        self.gpt.create_kv_cache(inputs_ids.size(0))
         for i in range(max_new_token):
 
             model_input = self._prepare_generation_inputs(
@@ -406,21 +402,15 @@ class GPT(nn.Module):
                     ]
                     emb = torch.stack(code_emb, 3).sum(3)
             model_input.inputs_embeds = emb
-            model_input.to(emb.device, emb.dtype)
-            outputs: BaseModelOutputWithPast = self.gpt(
-                attention_mask=model_input.attention_mask,
-                position_ids=model_input.position_ids,
-                past_key_values=model_input.past_key_values,
-                inputs_embeds=model_input.inputs_embeds,
-                use_cache=model_input.use_cache,
-                output_attentions=return_attn,
-                cache_position=model_input.cache_position,
-            )
-            attentions.append(outputs.attentions)
-            hidden_states = outputs.last_hidden_state
-            past_key_values = outputs.past_key_values
+            model_input.to(emb.device, dtype=emb.dtype)
+            hidden_states = self.gpt.predict(model_input.inputs_embeds, model_input.attention_mask,
+                                             model_input.position_ids)
+            hidden_states = hidden_states.to(emb.device, dtype=emb.dtype)
+            past_key_values = self.gpt.get_cur_kv_caches()
+            attentions.append(None)
             if return_hidden:
                 hiddens.append(hidden_states.narrow(1, -1, 1).squeeze_(1))
+
             with P.cached():
                 if infer_text:
                     logits: torch.Tensor = self.head_text(hidden_states)
