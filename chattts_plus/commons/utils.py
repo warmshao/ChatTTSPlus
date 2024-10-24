@@ -4,6 +4,7 @@
 # @ProjectName: ChatTTSPlus
 # @FileName: utils.py
 
+import torch
 from dataclasses import dataclass, asdict
 from typing import Literal, Optional, List, Tuple, Dict, Union
 
@@ -33,3 +34,12 @@ class InferCodeParams(RefineTextParams):
     stream_batch: int = 24
     stream_speed: int = 12000
     pass_first_n_batches: int = 2
+
+
+def get_inference_device():
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        return torch.device("mps")
+    else:
+        return torch.device("cpu")

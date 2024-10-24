@@ -4,8 +4,14 @@ if sys.platform == "darwin":
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 import argparse
-
 import gradio as gr
+from omegaconf import OmegaConf
+
+from chattts_plus.pipelines.chattts_plus_pipeline import ChatTTSPlusPipeline
+from chattts_plus.commons import utils
+
+# ChatTTSPlus pipeline
+pipe: ChatTTSPlusPipeline = None
 
 js_func = """
     function refresh() {
@@ -19,7 +25,7 @@ js_func = """
     """
 
 
-def main():
+def main(args):
     with gr.Blocks(theme=gr.themes.Soft(font=[gr.themes.GoogleFont("Plus Jakarta Sans")]), js=js_func) as demo:
         gr.Markdown("# ChatTTSPlus WebUI")
 
@@ -32,25 +38,35 @@ def main():
                     placeholder="Please Input Text...",
                     interactive=True,
                 )
-            with gr.Column():
-                with gr.Tab(label="Sample Audio"):
-                    sample_audio_input = gr.Audio(
-                        value=None,
-                        type="filepath",
-                        interactive=True,
-                        show_label=False,
-                        waveform_options=gr.WaveformOptions(
-                            sample_rate=24000,
-                        ),
-                        scale=1,
-                    )
-                    sample_text_input = gr.Textbox(
-                        label="Sample Text",
-                        lines=4,
-                        max_lines=4,
-                        placeholder="If Sample Audio and Sample Text are available, the Speaker Embedding will be disabled.",
-                        interactive=True,
-                    )
+        with gr.Tab(label="Sample Audio(ZeroShot)"):
+            with gr.Row():
+                sample_audio_input = gr.Audio(
+                    value=None,
+                    type="filepath",
+                    interactive=True,
+                    show_label=False,
+                    waveform_options=gr.WaveformOptions(
+                        sample_rate=24000,
+                    ),
+                    scale=1,
+                )
+                sample_text_input = gr.Textbox(
+                    label="Sample Text(ZeroShot)",
+                    lines=4,
+                    max_lines=4,
+                    placeholder="If Sample Audio and Sample Text are available, the Speaker Embedding will be disabled.",
+                    interactive=True,
+                )
+
+        with gr.Row():
+            spk_emb_text = gr.Textbox(
+                label="Speaker Embedding",
+                max_lines=3,
+                show_copy_button=True,
+                interactive=True,
+                scale=2,
+            )
+            reload_chat_button = gr.Button("Reload", scale=1, interactive=True)
 
         with gr.Row():
             refine_text_checkbox = gr.Checkbox(
@@ -79,20 +95,6 @@ def main():
             )
 
         with gr.Row():
-            # voice_selection = gr.Dropdown(
-            #     label="Timbre",
-            #     choices=voices.keys(),
-            #     value="Default",
-            #     interactive=True,
-            # )
-            audio_seed_input = gr.Number(
-                label="Audio Seed",
-                interactive=True,
-                value=-1,
-                minimum=-1,
-                maximum=1e08,
-            )
-            generate_audio_seed = gr.Button("\U0001F3B2", interactive=True)
             text_seed_input = gr.Number(
                 label="Text Seed",
                 interactive=True,
@@ -101,23 +103,14 @@ def main():
                 maximum=1e08,
             )
             generate_text_seed = gr.Button("\U0001F3B2", interactive=True)
-
-        with gr.Row():
-            spk_emb_text = gr.Textbox(
-                label="Speaker Embedding",
-                max_lines=3,
-                show_copy_button=True,
+            audio_seed_input = gr.Number(
+                label="Audio Seed",
                 interactive=True,
-                scale=2,
+                value=-1,
+                minimum=-1,
+                maximum=1e08,
             )
-            dvae_coef_text = gr.Textbox(
-                label="DVAE Coefficient",
-                max_lines=3,
-                show_copy_button=True,
-                interactive=True,
-                scale=2,
-            )
-            reload_chat_button = gr.Button("Reload", scale=1, interactive=True)
+            generate_audio_seed = gr.Button("\U0001F3B2", interactive=True)
 
         with gr.Row():
             auto_play_checkbox = gr.Checkbox(
@@ -230,28 +223,27 @@ def main():
         #     ],
         # )
 
-    parser = argparse.ArgumentParser(description="ChatTTS demo Launch")
-    parser.add_argument(
-        "--server_name", type=str, default="0.0.0.0", help="server name"
-    )
-    parser.add_argument("--server_port", type=int, default=7890, help="server port")
-    parser.add_argument("--root_path", type=str, default=None, help="root path")
-    parser.add_argument(
-        "--custom_path", type=str, default=None, help="custom model path"
-    )
-    parser.add_argument(
-        "--coef", type=str, default=None, help="custom dvae coefficient"
-    )
-    args = parser.parse_args()
-
     demo.launch(
         server_name=args.server_name,
         server_port=args.server_port,
-        root_path=args.root_path,
         inbrowser=True,
         show_api=False,
     )
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="ChatTTS demo Launch")
+    parser.add_argument(
+        "--cfg", type=str, default="configs/infer/chattts_plus.yaml", help="config of chattts plus"
+    )
+    parser.add_argument(
+        "--server_name", type=str, default="0.0.0.0", help="server name"
+    )
+    parser.add_argument("--server_port", type=int, default=7890, help="server port")
+    args = parser.parse_args()
+
+    # infer_cfg = OmegaConf.load(args.cfg)
+    # pipeline = ChatTTSPlusPipeline(infer_cfg, device=utils.get_inference_device())
+    #
+    # pipe = ChatTTSPlusPipeline(infer_cfg)
+    main(args)
