@@ -154,7 +154,7 @@ def generate_audio(
             yield 24000, float_to_int16(wavs).T
 
 
-def update_tab(tab_name):
+def update_active_tab(tab_name):
     return gr.State(tab_name)
 
 
@@ -172,7 +172,7 @@ def main(args):
                 )
         activate_tag_name = gr.State(value="Speaker Embedding")
 
-        with gr.Tabs(update_tab) as tabs:
+        with gr.Tabs() as tabs:
             with gr.Tab("Speaker Embedding"):
                 with gr.Column():
                     with gr.Row(equal_height=True):
@@ -220,6 +220,12 @@ def main(args):
                         placeholder="If Sample Audio and Sample Text are available, the Speaker Embedding will be disabled.",
                         interactive=True,
                     )
+
+        tabs.change(
+            fn=update_active_tab,
+            inputs=tabs,
+            outputs=[activate_tag_name]
+        )
 
         with gr.Row(equal_height=True):
             refine_text_checkbox = gr.Checkbox(
