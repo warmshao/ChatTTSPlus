@@ -72,7 +72,6 @@ def refine_text(
     global pipe
 
     if not refine_text_flag:
-        sleep(1)  # to skip fast answer of loading mark
         return text
 
     with utils.TorchSeedContext(text_seed_input):
@@ -96,7 +95,7 @@ def refine_text(
         for text_ in text_gen:
             texts.extend(text_)
 
-    return "".join(texts)
+    return "\n".join(texts)
 
 
 def generate_audio(
@@ -109,8 +108,7 @@ def generate_audio(
         stream,
         audio_seed_input,
         sample_text_input,
-        sample_audio_input,
-        activate_tag_name
+        sample_audio_input
 ):
     global pipe
 
@@ -124,9 +122,6 @@ def generate_audio(
         top_K=top_K,
         max_new_token=2048,
     )
-    if activate_tag_name == "Speaker Embedding":
-        sample_text_input = None
-        sample_audio_input = None
 
     with utils.TorchSeedContext(audio_seed_input):
         wav_gen = pipe.infer(
@@ -137,8 +132,8 @@ def generate_audio(
             do_text_optimization=False,
             params_infer_code=params_infer_code,
             stream=stream,
-            speaker_audio_path=sample_text_input,
-            speaker_audio_text=sample_audio_input,
+            speaker_audio_path=sample_audio_input,
+            speaker_audio_text=sample_text_input,
             speaker_emb_path=spk_emb_path
         )
         if stream:
@@ -156,6 +151,16 @@ def generate_audio(
 
 def update_active_tab(tab_name):
     return gr.State(tab_name)
+
+
+# 清空 Speaker Embedding Path 的重置函数
+def reset_spk_emb_path():
+    return "", []
+
+
+# 清空 Sample Audio 和 Sample Text 的重置函数
+def reset_sample_inputs():
+    return None, ""  # 返回 None 清空音频，空字符串清空文本框
 
 
 def main(args):
@@ -193,39 +198,45 @@ def main(args):
                         interactive=True,
                         scale=2,
                     )
+                    spk_emb_reset = gr.Button("Reset", scale=1)
 
                     upload_emb_file.upload(update_spk_emb_path, inputs=upload_emb_file, outputs=spk_emb_path)
                     reload_chat_button.click(
                         list_pt_files_in_dir, inputs=spk_emb_dir, outputs=pt_files_dropdown
                     )
-                    pt_files_dropdown.change(
+                    pt_files_dropdown.select(
                         set_spk_emb_path_from_dir, inputs=[spk_emb_dir, pt_files_dropdown], outputs=spk_emb_path
                     )
 
-            with gr.Tab("Speaker Audio (ZeroShot)"):
-                with gr.Row(equal_height=True):
-                    sample_audio_input = gr.Audio(
-                        value=None,
-                        type="filepath",
-                        interactive=True,
-                        show_label=False,
-                        waveform_options=gr.WaveformOptions(
-                            sample_rate=24000,
-                        ),
-                    )
-                    sample_text_input = gr.Textbox(
-                        label="Sample Text (ZeroShot)",
-                        lines=4,
-                        max_lines=4,
-                        placeholder="If Sample Audio and Sample Text are available, the Speaker Embedding will be disabled.",
-                        interactive=True,
+                    # 点击 Reset 按钮清空 Speaker Embedding Path
+                    spk_emb_reset.click(
+                        reset_spk_emb_path, inputs=None, outputs=[spk_emb_path, pt_files_dropdown]
                     )
 
-        tabs.change(
-            fn=update_active_tab,
-            inputs=tabs,
-            outputs=[activate_tag_name]
-        )
+            with gr.Tab("Speaker Audio (ZeroShot)"):
+                with gr.Column():
+                    with gr.Row(equal_height=True):
+                        sample_audio_input = gr.Audio(
+                            value=None,
+                            type="filepath",
+                            interactive=True,
+                            show_label=False,
+                            waveform_options=gr.WaveformOptions(
+                                sample_rate=24000,
+                            ),
+                        )
+                        sample_text_input = gr.Textbox(
+                            label="Sample Text (ZeroShot)",
+                            lines=4,
+                            max_lines=4,
+                            placeholder="If Sample Audio and Sample Text are available, the Speaker Embedding will be disabled.",
+                            interactive=True,
+                        )
+                    sample_reset = gr.Button("Reset", scale=1)
+                    # 点击 Reset 按钮清空 Sample Audio 和 Sample Text
+                    sample_reset.click(
+                        reset_sample_inputs, inputs=None, outputs=[sample_audio_input, sample_text_input]
+                    )
 
         with gr.Row(equal_height=True):
             refine_text_checkbox = gr.Checkbox(
@@ -378,8 +389,7 @@ def main(args):
                     stream_mode_checkbox,
                     audio_seed_input,
                     sample_text_input,
-                    sample_audio_input,
-                    activate_tag_name
+                    sample_audio_input
                 ],
                 outputs=audio_output,
             )

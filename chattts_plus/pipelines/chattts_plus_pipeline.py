@@ -457,7 +457,7 @@ class ChatTTSPlusPipeline:
               params_refine_text=RefineTextParams(),
               params_infer_code=InferCodeParams(),
               **kwargs):
-        if kwargs.get("speaker_audio_path", None) is not None:
+        if kwargs.get("speaker_audio_path", None):
             speaker_audio_path = kwargs.get("speaker_audio_path", None)
             assert os.path.exists(speaker_audio_path), f"speaker_audio_path {speaker_audio_path} not exists!"
             speaker_audio_text = kwargs.get("speaker_audio_text", "")
@@ -472,7 +472,7 @@ class ChatTTSPlusPipeline:
             params_infer_code.txt_smp = speaker_audio_text
             params_infer_code.spk_smp = spk_smp
             params_infer_code.spk_emb = None
-        elif kwargs.get("speaker_emb_path", None) is not None:
+        elif kwargs.get("speaker_emb_path", None):
             speaker_emb_path = kwargs.get("speaker_emb_path", None)
             assert os.path.exists(speaker_emb_path), f"speaker_emb_path {speaker_emb_path} not exists!"
             self.logger.info(f"loading speaker_emb from {speaker_emb_path}")
