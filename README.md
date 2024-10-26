@@ -17,6 +17,7 @@ ChatTTSPlus is an extension of [ChatTTS](https://github.com/2noise/ChatTTS), add
 * **Optional**: If you plan to use TensorRT, install it with: `pip install --pre --extra-index-url https://pypi.nvidia.com/ tensorrt --no-cache-dir`
 
 ### Demo
+* Webui with TensorRT: `python webui.py --cfg configs/infer/chattts_plus_trt.yaml`. Webui with Pytorch: `python webui.py --cfg configs/infer/chattts_plus.yaml`
 <video src="https://github.com/user-attachments/assets/bd2c1e48-6339-4ad7-bcfa-ed008c992594" controls="controls" width="500" height="300">Your browser does not support video playback!</video>
 
 ### License
