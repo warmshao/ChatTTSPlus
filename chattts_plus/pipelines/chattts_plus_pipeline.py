@@ -367,9 +367,6 @@ class ChatTTSPlusPipeline:
             elif short_text:
                 retext[-1] += f" [uv_break] {short_text}"
 
-            for ti in range(len(retext)):
-                if not retext[ti].strip().endswith("[uv_break]"):
-                    retext[ti] += " [uv_break]"
             text_in = retext
             self.logger.info("Finish text optimization: ")
             self.logger.info(text_in)
@@ -407,41 +404,44 @@ class ChatTTSPlusPipeline:
                 self.logger.info(text)
                 if refine_text_only:
                     yield text
-                    return
 
-            if stream:
-                length = 0
-                pass_batch_count = 0
-            for result in self._infer_code(
-                    text,
-                    stream,
-                    use_decoder,
-                    params_infer_code,
-            ):
-                wavs = self._decode_to_wavs(
-                    result.hiddens if use_decoder else result.ids,
-                    use_decoder,
-                )
+            if not refine_text_only:
+                for ti in range(len(text)):
+                    if not text[ti].strip().endswith("[uv_break]"):
+                        retext[ti] += " [uv_break]"
                 if stream:
-                    pass_batch_count += 1
-                    if pass_batch_count <= params_infer_code.pass_first_n_batches:
-                        continue
-                    a = length
-                    b = a + params_infer_code.stream_speed
-                    if b > wavs.shape[1]:
-                        b = wavs.shape[1]
-                    new_wavs = wavs[:, a:b]
-                    length = b
-                    yield new_wavs
-                else:
-                    yield wavs
-            if stream:
-                new_wavs = wavs[:, length:]
-                # Identify rows with non-zero elements using np.any
-                # keep_rows = np.any(array != 0, axis=1)
-                keep_cols = np.sum(new_wavs != 0, axis=0) > 0
-                # Filter both rows and columns using slicing
-                yield new_wavs[:][:, keep_cols]
+                    length = 0
+                    pass_batch_count = 0
+                for result in self._infer_code(
+                        text,
+                        stream,
+                        use_decoder,
+                        params_infer_code,
+                ):
+                    wavs = self._decode_to_wavs(
+                        result.hiddens if use_decoder else result.ids,
+                        use_decoder,
+                    )
+                    if stream:
+                        pass_batch_count += 1
+                        if pass_batch_count <= params_infer_code.pass_first_n_batches:
+                            continue
+                        a = length
+                        b = a + params_infer_code.stream_speed
+                        if b > wavs.shape[1]:
+                            b = wavs.shape[1]
+                        new_wavs = wavs[:, a:b]
+                        length = b
+                        yield new_wavs
+                    else:
+                        yield wavs
+                if stream:
+                    new_wavs = wavs[:, length:]
+                    # Identify rows with non-zero elements using np.any
+                    # keep_rows = np.any(array != 0, axis=1)
+                    keep_cols = np.sum(new_wavs != 0, axis=0) > 0
+                    # Filter both rows and columns using slicing
+                    yield new_wavs[:][:, keep_cols]
 
     @torch.no_grad()
     def infer(self,
@@ -457,7 +457,7 @@ class ChatTTSPlusPipeline:
               params_refine_text=RefineTextParams(),
               params_infer_code=InferCodeParams(),
               **kwargs):
-        if kwargs.get("speaker_audio_path", None) is not None:
+        if kwargs.get("speaker_audio_path", None):
             speaker_audio_path = kwargs.get("speaker_audio_path", None)
             assert os.path.exists(speaker_audio_path), f"speaker_audio_path {speaker_audio_path} not exists!"
             speaker_audio_text = kwargs.get("speaker_audio_text", "")
@@ -472,7 +472,7 @@ class ChatTTSPlusPipeline:
             params_infer_code.txt_smp = speaker_audio_text
             params_infer_code.spk_smp = spk_smp
             params_infer_code.spk_emb = None
-        elif kwargs.get("speaker_emb_path", None) is not None:
+        elif kwargs.get("speaker_emb_path", None):
             speaker_emb_path = kwargs.get("speaker_emb_path", None)
             assert os.path.exists(speaker_emb_path), f"speaker_emb_path {speaker_emb_path} not exists!"
             self.logger.info(f"loading speaker_emb from {speaker_emb_path}")

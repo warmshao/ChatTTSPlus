@@ -7,3 +7,4 @@ data
 logs
 */__pycache__/
 scripts/conversions
+*.pyc
