@@ -12,7 +12,7 @@ setup(
     name="chattts_plus",
     version=os.environ.get("CHATTTS_PLUS_VER", version).lstrip("v"),
     description="",
-    long_description=open("README.md", encoding="utf8").read(),
+    long_description=open("README_EN.md", encoding="utf8").read(),
     long_description_content_type="text/markdown",
     author="wenshao",
     author_email="wenshaoguo1026@gmail.com",
