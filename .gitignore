@@ -9,3 +9,5 @@ logs
 scripts/conversions
 *.pyc
 venv
+dist
+build
