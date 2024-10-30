@@ -3,7 +3,7 @@ numba
 torch>=2.1.0
 torchaudio
 tqdm
-vector_quantize_pytorch
+vector_quantize_pytorch==1.17.8
 transformers>=4.41.1
 vocos
 IPython
@@ -22,3 +22,4 @@ accelerate
 sentencepiece
 sentence_transformers
 omegaconf
+soundfile

@@ -208,11 +208,7 @@ def test_chattts_plus_zero_shot_trt_pipeline():
     )
     infer_text = [
         "一场雨后，天空和地面互换了身份，抬头万里暗淡，足下星河生辉。这句话真是绝了.你觉得呢.哈哈哈哈",
-        "请您即刻删除本邮件，勿以任何形式使用及传播本邮件内容，谢谢！",
-        "一场雨后，天空和地面互换了身份，抬头万里暗淡，足下星河生辉。这句话真是绝了.你觉得呢.哈哈哈哈",
-        "如您并非抬头标明的收件人，请您即刻删除本邮件",
-        "一场雨后，天空和地面互换了身份，抬头万里暗淡，足下星河生辉。这句话真是绝了.你觉得呢.哈哈哈哈",
-        "如您并非抬头标明的收件人，请您即刻删除本邮件，勿以任何形式使用及传播本邮件内容，谢谢！"
+        "请您即刻删除本邮件，勿以任何形式使用及传播本邮件内容，谢谢！"
     ]
     speaker_audio_path = "data/xionger/slicer_opt/vocal_1.WAV_10.wav_0000000000_0000152640.wav"
     speaker_audio_text = "嘿嘿，最近我看了寄生虫，真的很推荐哦。"
@@ -245,5 +241,5 @@ def test_chattts_plus_zero_shot_trt_pipeline():
 if __name__ == '__main__':
     # test_chattts_plus_pipeline()
     # test_chattts_plus_trt_pipeline()
-    # test_chattts_plus_zero_shot_pipeline()
-    test_chattts_plus_zero_shot_trt_pipeline()
+    test_chattts_plus_zero_shot_pipeline()
+    # test_chattts_plus_zero_shot_trt_pipeline()
