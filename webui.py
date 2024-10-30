@@ -159,39 +159,9 @@ def update_active_tab(tab_name):
 def reset_spk_emb_path():
     return "", []
 
-
 # 清空 Sample Audio 和 Sample Text 的重置函数
 def reset_sample_inputs():
     return None, ""  # 返回 None 清空音频，空字符串清空文本框
-
-
-def check_for_update():
-    # Function to handle the update process
-    return gr.update(value=True)  # Placeholder for the update process
-
-
-def confirm_update(update):
-    if update:
-        # Replace local code with the latest from the repository
-        subprocess.run(["git", "fetch", "origin"])
-        subprocess.run(["git", "reset", "--hard", "origin/main"])
-        return "Local code updated successfully. Please restart the application."
-    return "Update canceled."
-
-
-def show_update_dialog():
-    with gr.Row():
-        update_button = gr.Button("Check for Update")
-        update_message = gr.Textbox(label="Update Message", interactive=False)
-
-    def on_update_button_click():
-        return gr.update(value="Update will overwrite all local code changes. Do you want to continue?", visible=True)
-
-    update_button.click(on_update_button_click)
-
-    update_confirmation = gr.Radio(label="Are you sure?", choices=["Yes", "No"], interactive=True)
-
-    update_confirmation.change(fn=confirm_update, inputs=update_confirmation, outputs=update_message)
 
 def main(args):
     with gr.Blocks(theme=gr.themes.Soft(font=[gr.themes.GoogleFont("Plus Jakarta Sans")]), js=js_func) as demo:
