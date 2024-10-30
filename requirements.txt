@@ -21,3 +21,4 @@ peft
 accelerate
 sentencepiece
 sentence_transformers
+omegaconf

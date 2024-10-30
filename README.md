@@ -17,7 +17,7 @@ ChatTTSPlus是[ChatTTS](https://github.com/2noise/ChatTTS)的扩展，增加使�
 * 安装python3，推荐可以用[miniforge](https://github.com/conda-forge/miniforge).`conda create -n chattts_plus python=3.10 && conda activate chattts_plus`
 * 下载源码: `git clone https://github.com/warmshao/ChatTTSPlus`, 并到项目根目录下: `cd ChatTTSPlus`
 * 安装必要的python库, `pip install -r requirements.txt`
-* 【可选】如果你要使用tensorrt的话，请安装：`pip install --pre --extra-index-url https://pypi.nvidia.com/ tensorrt --no-cache-dir`
+* 【可选】如果你要使用tensorrt的话，请安装：`pip install --pre --extra-index-url https://pypi.nvidia.com/ tensorrt --no-cache-dir` 和 `pip install polygraphy`
 * 【windows用户推荐】直接从这个链接下载整合包，解压后双击`webui.bat`即可使用。如果要更新代码的话，请先双击`update.bat`, 注意：**这会覆盖你本地所有的代码修改**。
 
 ### Demo
