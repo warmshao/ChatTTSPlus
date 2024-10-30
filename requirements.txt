@@ -16,3 +16,8 @@ av
 pydub
 pandas
 zh-normalization
+transformers
+peft
+accelerate
+sentencepiece
+sentence_transformers
