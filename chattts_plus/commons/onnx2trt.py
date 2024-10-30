@@ -22,10 +22,6 @@ import logging
 import argparse
 
 import tensorrt as trt
-import ctypes
-import numpy as np
-import onnx
-from polygraphy.backend.trt import ModifyNetworkOutputs, Profile
 from polygraphy.backend.trt import (
     engine_from_bytes,
     engine_from_network,

@@ -408,7 +408,7 @@ class ChatTTSPlusPipeline:
             if not refine_text_only:
                 for ti in range(len(text)):
                     if not text[ti].strip().endswith("[uv_break]"):
-                        retext[ti] += " [uv_break]"
+                        text[ti] += " [uv_break]"
                 if stream:
                     length = 0
                     pass_batch_count = 0
