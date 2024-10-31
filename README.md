@@ -36,4 +36,5 @@ The model is published under CC BY-NC 4.0 license. It is intended for educationa
 ### 关于我
 我是一个专注于做AIGC和LLM相关产品落地的算法工程师。有创业、合作或定制化需求欢迎加我的discord(warmshao)私信我，或者加我的微信：
 
-<img src="assets/wx/alex.jpg" alt="微信" width="300" height="350">
+<img src="assets/wx/alex.jpg" alt="微信" width="300" height="400">
+<img src="assets/wx/img.png" alt="微信群" width="300" height="400">
