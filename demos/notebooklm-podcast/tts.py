@@ -16,12 +16,6 @@ from chattts_plus.pipelines.chattts_plus_pipeline import ChatTTSPlusPipeline
 from chattts_plus.commons import utils as c_utils
 
 
-def float_to_int16(audio: np.ndarray) -> np.ndarray:
-    am = int(math.ceil(float(np.abs(audio).max())) * 32768)
-    am = 32767 * 32768 // am
-    return np.multiply(audio, am).astype(np.int16)
-
-
 cfg = "../../configs/infer/chattts_plus_trt.yaml"
 infer_cfg = OmegaConf.load(cfg)
 pipe = ChatTTSPlusPipeline(infer_cfg, device=c_utils.get_inference_device())
