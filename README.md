@@ -1,40 +1,44 @@
 ## ChatTTSPlus: Extension of ChatTTS
 
-<a href="README.md">中文</a> | <a href="README_EN.md">English</a>
+<a href="README_ZH.md">中文</a> | <a href="README.md">English</a>
 
-ChatTTSPlus是[ChatTTS](https://github.com/2noise/ChatTTS)的扩展，增加使用TensorRT加速、声音克隆和模型移动端运行等功能。
+ChatTTSPlus is an extension of [ChatTTS](https://github.com/2noise/ChatTTS), adding features such as TensorRT acceleration, voice cloning, and mobile model deployment.
 
-**如果你觉得这个项目有用，帮我点个star吧✨✨**
+**If you find this project useful, please give it a star! ✨✨**
 
-### 新增功能
-- [x] 将ChatTTS的代码以我熟悉的方式重构。
-- [x] **使用TensorRT实现3倍以上的加速**, 在windows的3060显卡上从28token/s提升到110token/s。
-- [x] windows整合包，一键解压使用。
-- [ ] 使用Lora等技术实现声音克隆。
-- [ ] 使用剪枝、知识蒸馏等做模型压缩和加速，目标在移动端运行。
+### Some fun demos based on ChatTTSPlus
+* NotebookLM podcast: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1jz8HPdRe_igoNjMSv0RaTn3l2c3seYFT?usp=sharing)
 
-### 环境安装
-* 安装python3，推荐可以用[miniforge](https://github.com/conda-forge/miniforge).`conda create -n chattts_plus python=3.10 && conda activate chattts_plus`
-* 下载源码: `git clone https://github.com/warmshao/ChatTTSPlus`, 并到项目根目录下: `cd ChatTTSPlus`
-* 安装必要的python库, `pip install -r requirements.txt`
-* 【可选】如果你要使用tensorrt的话，请安装[tensorrt10](https://developer.nvidia.com/tensorrt/download)
-* 【windows用户推荐】直接从[Google Drive链接](https://drive.google.com/file/d/1yOnU5dRTJvFnc4wyw02nAeJH5_FgNod2/view?usp=sharing)下载整合包，解压后双击`webui.bat`即可使用。如果要更新代码的话，请先双击`update.bat`, 注意：**这会覆盖你本地所有的代码修改**。
+
+### New Features
+- [x] Refactored ChatTTS code in a way I'm familiar with.
+- [x] **Achieved over 3x acceleration with TensorRT**, increasing performance on a Windows 3060 GPU from 28 tokens/s to 110 tokens/s.
+- [x] Windows integration package for one-click extraction and use.
+- [ ] Implemented voice cloning using technologies like LoRA.
+- [ ] Model compression and acceleration using techniques like pruning and knowledge distillation, targeting mobile deployment.
+
+### Environment Setup
+* Install Python 3; it's recommended to use [Miniforge](https://github.com/conda-forge/miniforge). Run: `conda create -n chattts_plus python=3.10 && conda activate chattts_plus`
+* Download the source code: `git clone https://github.com/warmshao/ChatTTSPlus`, and navigate to the project root directory: `cd ChatTTSPlus`
+* Install necessary Python libraries: `pip install -r requirements.txt`
+* [Optional] If you want to use TensorRT, please install [tensorrt10](https://developer.nvidia.com/tensorrt/download)
+* [Recommended for Windows users] Download the integration package directly from [Google Drive Link](https://drive.google.com/file/d/1yOnU5dRTJvFnc4wyw02nAeJH5_FgNod2/view?usp=sharing), extract it, and double-click `webui.bat` to use. If you want to update the code, please double-click `update.bat`. Note: **This will overwrite all your local code modifications.**
 
 ### Demo
-* Webui with TensorRT: `python webui.py --cfg configs/infer/chattts_plus_trt.yaml`. 
-* Webui with Pytorch: `python webui.py --cfg configs/infer/chattts_plus.yaml`
+* Web UI with TensorRT: `python webui.py --cfg configs/infer/chattts_plus_trt.yaml`. 
+* Web UI with PyTorch: `python webui.py --cfg configs/infer/chattts_plus.yaml`
 
-<video src="https://github.com/user-attachments/assets/bd2c1e48-6339-4ad7-bcfa-ed008c992594" controls="controls" width="500" height="300">您的浏览器不支持播放该视频！</video>
+<video src="https://github.com/user-attachments/assets/bd2c1e48-6339-4ad7-bcfa-ed008c992594" controls="controls" width="500" height="300">Your browser does not support playing this video!</video>
 
 ### License
-ChatTTSPlus继承[ChatTTS](https://github.com/2noise/ChatTTS)的license，请以[ChatTTS](https://github.com/2noise/ChatTTS)为标准。
+ChatTTSPlus inherits the license from [ChatTTS](https://github.com/2noise/ChatTTS); please refer to [ChatTTS](https://github.com/2noise/ChatTTS) as the standard.
 
-The code is published under AGPLv3+ license.
+The code is published under the AGPLv3+ license.
 
-The model is published under CC BY-NC 4.0 license. It is intended for educational and research use, and should not be used for any commercial or illegal purposes. The authors do not guarantee the accuracy, completeness, or reliability of the information. The information and data used in this repo, are for academic and research purposes only. The data obtained from publicly available sources, and the authors do not claim any ownership or copyright over the data.
+The model is published under the CC BY-NC 4.0 license. It is intended for educational and research use and should not be used for any commercial or illegal purposes. The authors do not guarantee the accuracy, completeness, or reliability of the information. The information and data used in this repository are for academic and research purposes only. The data is obtained from publicly available sources, and the authors do not claim any ownership or copyright over the data.
 
-### 关于我
-我是一个专注于做AIGC和LLM相关产品落地的算法工程师。有创业、合作或定制化需求欢迎加我的discord(warmshao)私信我，或者加我的微信：
+### About Me
+I'm an algorithm engineer focused on implementing AIGC and LLM-related products. If you have any needs for entrepreneurship, collaboration, or customization, feel free to add me on Discord (warmshao) or on WeChat:
 
 <img src="assets/wx/alex.jpg" alt="微信" width="300" height="400">
 <img src="assets/wx/img.png" alt="微信群" width="300" height="400">
