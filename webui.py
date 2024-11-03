@@ -159,9 +159,11 @@ def update_active_tab(tab_name):
 def reset_spk_emb_path():
     return "", []
 
+
 # 清空 Sample Audio 和 Sample Text 的重置函数
 def reset_sample_inputs():
     return None, ""  # 返回 None 清空音频，空字符串清空文本框
+
 
 def main(args):
     with gr.Blocks(theme=gr.themes.Soft(font=[gr.themes.GoogleFont("Plus Jakarta Sans")]), js=js_func) as demo:
@@ -363,6 +365,7 @@ def main(args):
                 waveform_options=gr.WaveformOptions(
                     sample_rate=24000,
                 ),
+                show_download_button=True
             )
 
             generate_button.click(
