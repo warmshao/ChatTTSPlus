@@ -126,7 +126,7 @@ class ChatTTSPlusPipeline:
 
         spk_stat_path = os.path.join(constants.CHECKPOINT_DIR, "asset/spk_stat.pt")
         if not os.path.exists(spk_stat_path):
-            self.logger.warn(f"{spk_stat_path} not exists! Need to download from HuggingFace")
+            self.logger.warning(f"{spk_stat_path} not exists! Need to download from HuggingFace")
             hf_hub_download(repo_id="2Noise/ChatTTS", subfolder="asset",
                             filename=os.path.basename(spk_stat_path),
                             local_dir=constants.CHECKPOINT_DIR)
@@ -142,7 +142,7 @@ class ChatTTSPlusPipeline:
 
         normalizer_json = os.path.join(constants.CHECKPOINT_DIR, "homophones_map.json")
         if not os.path.exists(normalizer_json):
-            self.logger.warn(f"{normalizer_json} not exists! Need to download from HuggingFace")
+            self.logger.warning(f"{normalizer_json} not exists! Need to download from HuggingFace")
             hf_hub_download(repo_id="warmshao/ChatTTSPlus",
                             filename=os.path.basename(normalizer_json),
                             local_dir=constants.CHECKPOINT_DIR)
@@ -276,7 +276,8 @@ class ChatTTSPlusPipeline:
     def sample_audio_speaker(self, wav: Union[np.ndarray, torch.Tensor]) -> str:
         if isinstance(wav, np.ndarray):
             wav = torch.from_numpy(wav).to(self.device, dtype=self.dtype)
-        return self.models_dict["tokenizer"]._encode_prompt(self.models_dict["dvae_encode"](wav, "encode").squeeze_(0))
+        return self.models_dict["tokenizer"]._encode_prompt(
+            self.models_dict["dvae_encode"](wav[None], "encode").squeeze_(0))
 
     @torch.inference_mode()
     def _decode_to_wavs(
@@ -383,10 +384,10 @@ class ChatTTSPlusPipeline:
         self.logger.info("Finish text normalization: ")
         self.logger.info(text_in)
 
-        slice_size = 4
+        slice_size = kwargs.get("slice_size", 4)
         if len(text_in) > slice_size:
-            self.logger.warn(
-                f"len of text is {len(text_in)} > 4, only support max batchsize=4, so we need to slice to inference")
+            self.logger.warning(
+                f"len of text is {len(text_in)} > 4, only support max batch size is equal to 4, so we need to slice to inference")
 
         for ii in tqdm(range(0, len(text_in), slice_size)):
             text = text_in[ii:ii + slice_size].copy()

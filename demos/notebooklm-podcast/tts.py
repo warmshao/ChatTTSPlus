@@ -43,7 +43,7 @@ def generate_audio(
         temperature=0.3,
         max_new_token=384
     )
-    infer_seed = kwargs.get("infer_seed", 12345)
+    infer_seed = kwargs.get("infer_seed", 1234)
     with c_utils.TorchSeedContext(infer_seed):
         pipe_res_gen = pipe.infer(
             text,
@@ -76,7 +76,7 @@ if __name__ == '__main__':
     base_url = "https://api2.aigcbest.top/v1"
     api_token = ""
     gpt_model = ""
-    pdf_txt_file = "../../data/pdfs/MIMO.txt"
+    pdf_txt_file = "../../data/pdfs/AnimateAnyone.txt"
     script_pkl = os.path.splitext(pdf_txt_file)[0] + "-script.pkl"
     re_script_pkl = os.path.splitext(pdf_txt_file)[0] + "-script-rewrite.pkl"
     save_audio_path = os.path.splitext(pdf_txt_file)[0] + ".wav"
@@ -100,7 +100,6 @@ if __name__ == '__main__':
             wav_ = generate_audio(text, speaker2_emb_path, audio_save_path=output_path)
         wavs.append(wav_)
         i += 1
-        break
     wavs = torch.cat(wavs, dim=-1)
     torchaudio.save(save_audio_path, wavs, 24000)
     print(save_audio_path)

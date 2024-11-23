@@ -55,7 +55,10 @@ def extract_pdf_to_txt(pdf_file, save_txt_file=None, lang='ch'):
         for line in res:
             line.pop('img')
             for pra in line['res']:
-                text.append(pra['text'])
+                if isinstance(pra, str):
+                    text.append(pra)
+                else:
+                    text.append(pra['text'])
             text.append('\n')
     with open(save_txt_file, 'w', encoding='utf-8') as f:
         f.write('\n'.join(text))
@@ -95,6 +98,6 @@ def extract_image_to_txt(image_file, save_txt_file=None, lang='ch'):
 
 
 if __name__ == '__main__':
-    pdf_file = "../../data/pdfs/MIMO.pdf"
+    pdf_file = "../../data/pdfs/AnimateAnyone.pdf"
     # pdf2images(pdf_file)
     extract_pdf_to_txt(pdf_file, lang='en')

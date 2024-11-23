@@ -263,8 +263,8 @@ class DVAE(nn.Module):
         if mode == "encode" and hasattr(self, "encoder") and self.vq_layer is not None:
             mel = self.preprocessor_mel(inp)
             x: torch.Tensor = self.downsample_conv(
-                torch.div(mel, self.coef.view(100, 1).expand(mel.shape), out=mel),
-            ).unsqueeze_(0)
+                torch.div(mel, self.coef.view(1, 100, 1).expand(mel.shape), out=mel),
+            )
             x = self.encoder(x)
             ind = self.vq_layer(x)
             return ind

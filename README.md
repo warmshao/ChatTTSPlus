@@ -41,4 +41,3 @@ The model is published under the CC BY-NC 4.0 license. It is intended for educat
 I'm an algorithm engineer focused on implementing AIGC and LLM-related products. If you have any needs for entrepreneurship, collaboration, or customization, feel free to add me on Discord (warmshao) or on WeChat:
 
 <img src="assets/wx/alex.jpg" alt="微信" width="300" height="400">
-<img src="assets/wx/img.png" alt="微信群" width="300" height="400">

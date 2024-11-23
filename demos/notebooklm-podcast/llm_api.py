@@ -127,23 +127,23 @@ if __name__ == '__main__':
     import utils
     import pickle
 
-    base_url = ""
-    api_token = ""
+    base_url = "https://api2.aigcbest.top/v1"
+    api_token = "sk-2gnUzC8dXpiFBMgBaPEJlS8WasXdNSQx2JKi3ZOdCSG2h4G0"
     gpt_model = "gpt-4o-mini"
-    pdf_txt_file = "../../data/pdfs/MIMO.txt"
+    pdf_txt_file = "../../data/pdfs/AnimateAnyone.txt"
     script_pkl = os.path.splitext(pdf_txt_file)[0] + "-script.pkl"
     re_script_pkl = os.path.splitext(pdf_txt_file)[0] + "-script-rewrite.pkl"
 
-    # chat_writer = init_script_writer_prompt()
-    # pdf_texts = utils.read_file_to_string(pdf_txt_file)
-    # chat_writer = add_response("user", pdf_texts, chat_writer)
-    # output_writer_texts = []
-    # output_writer = inference_openai_chat(chat_writer, gpt_model, base_url, api_token, max_tokens=8192)
-    # print(output_writer)
-    # chat_writer = add_response("assistant", output_writer, chat_writer)
-    #
-    # with open(script_pkl, 'wb') as file:
-    #     pickle.dump(output_writer, file)
+    chat_writer = init_script_writer_prompt()
+    pdf_texts = utils.read_file_to_string(pdf_txt_file)
+    chat_writer = add_response("user", pdf_texts, chat_writer)
+    output_writer_texts = []
+    output_writer = inference_openai_chat(chat_writer, gpt_model, base_url, api_token, max_tokens=8192)
+    print(output_writer)
+    chat_writer = add_response("assistant", output_writer, chat_writer)
+
+    with open(script_pkl, 'wb') as file:
+        pickle.dump(output_writer, file)
 
     with open(script_pkl, 'rb') as file:
         script_texts = pickle.load(file)
