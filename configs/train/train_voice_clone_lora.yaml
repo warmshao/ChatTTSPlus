@@ -63,6 +63,8 @@ LORA:
   lora_target_modules:
     - "q_proj"
     - "v_proj"
+    - "k_proj"
+    - "o_proj"
 
 solver:
   gradient_accumulation_steps: 1

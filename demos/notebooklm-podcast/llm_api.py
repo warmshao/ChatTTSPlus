@@ -127,8 +127,8 @@ if __name__ == '__main__':
     import utils
     import pickle
 
-    base_url = "https://api2.aigcbest.top/v1"
-    api_token = "sk-2gnUzC8dXpiFBMgBaPEJlS8WasXdNSQx2JKi3ZOdCSG2h4G0"
+    base_url = ""
+    api_token = ""
     gpt_model = "gpt-4o-mini"
     pdf_txt_file = "../../data/pdfs/AnimateAnyone.txt"
     script_pkl = os.path.splitext(pdf_txt_file)[0] + "-script.pkl"

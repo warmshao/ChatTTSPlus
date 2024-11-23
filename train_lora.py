@@ -163,7 +163,7 @@ def main(cfg):
     lora_config = LoraConfig(
         r=lora_cfg['lora_r'],
         lora_alpha=lora_cfg['lora_alpha'],
-        target_modules=lora_cfg['lora_target_modules'],
+        target_modules=["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "down_proj", "up_proj"],
         lora_dropout=lora_cfg['lora_dropout']
     )
     peft_model = get_peft_model(gpt_model.gpt, lora_config)
