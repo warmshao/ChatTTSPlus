@@ -70,7 +70,7 @@ DATA:
   num_vq: 4
 
 LORA:
-  lora_r: 8
+  lora_r: 16
   lora_alpha: 32
   lora_dropout: 0.05
   lora_target_modules:
@@ -99,12 +99,13 @@ solver:
   use_8bit_adam: false
   adam_beta1: 0.9
   adam_beta2: 0.95
-  adam_weight_decay: 1.0e-3
+  adam_weight_decay: 0
   adam_epsilon: 1.0e-6
 
 weight_dtype: 'fp16'
 output_dir: './outputs'
 exp_name: "xionger_lora"
 lora_model_path: ""
-speaker_embeds_path: ""
+speaker_embeds_path: "outputs/xionger_lora-1732444657.8262188/checkpoints/step-900/speaker_embeds.pkl"
 checkpointing_steps: 100
+use_empty_speaker: false

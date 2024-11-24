@@ -20,7 +20,6 @@ def test_chattts_plus_pipeline():
 
     pipeline = ChatTTSPlusPipeline(infer_cfg, device=torch.device("cuda"))
 
-    speaker_emb_path = "assets/speakers/2222.pt"
     params_infer_code = InferCodeParams(
         prompt="[speed_5]",
         temperature=.0003,
@@ -39,7 +38,8 @@ def test_chattts_plus_pipeline():
         "这部电影剧情紧凑，拍摄手法也很独特"
                   ]
     t0 = time.time()
-    lora_path = "outputs/xionger_lora-1732378835.863202/checkpoints/step-4000"
+    lora_path = "outputs/xionger_lora-1732444657.8262188/checkpoints/step-900"
+    speaker_emb_path = "outputs/xionger_lora-1732444657.8262188/checkpoints/step-900/xionger.pt"
     pipe_res_gen = pipeline.infer(
         infer_text,
         params_refine_text=params_refine_text,
@@ -51,7 +51,7 @@ def test_chattts_plus_pipeline():
         do_homophone_replacement=True,
         do_text_optimization=True,
         lora_path=lora_path,
-        # speaker_emb_path=speaker_emb_path
+        speaker_emb_path=speaker_emb_path
     )
     wavs = []
     for wavs_ in pipe_res_gen:
@@ -241,7 +241,7 @@ def test_chattts_plus_zero_shot_trt_pipeline():
 
 
 if __name__ == '__main__':
-    # test_chattts_plus_pipeline()
+    test_chattts_plus_pipeline()
     # test_chattts_plus_trt_pipeline()
-    test_chattts_plus_zero_shot_pipeline()
+    # test_chattts_plus_zero_shot_pipeline()
     # test_chattts_plus_zero_shot_trt_pipeline()

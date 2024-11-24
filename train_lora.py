@@ -219,36 +219,33 @@ def main(cfg):
         logger.info(f"download {normalizer_json} from warmshao/ChatTTSPlus")
     logger.info(f"loading normalizer: {normalizer_json}")
     normalizer = norm.Normalizer(normalizer_json)
-
     train_dataset = BaseDataset(
         meta_infos=cfg.DATA.meta_infos,
         sample_rate=cfg.DATA.sample_rate,
         num_vq=cfg.DATA.num_vq,
         tokenizer=tokenizer,
-        normalizer=normalizer
+        normalizer=normalizer,
+        use_empty_speaker=cfg.use_empty_speaker
     )
 
-    if cfg.speaker_embeds_path:
-        with open(cfg.speaker_embeds_path, "rb") as fin:
-            speaker_embeds = pickle.load(fin)
-        for speaker in speaker_embeds:
-            spk_emb = torch.from_numpy(speaker_embeds[speaker]).to(accelerator.device, dtype=torch.float32)
-            spk_emb = torch.nn.Parameter(spk_emb)
-            spk_emb.requires_grad_(True)
-            speaker_embeds[speaker] = spk_emb
-    else:
-        speaker_embeds = dict()
-        for speaker in train_dataset.speakers:
-            if speaker not in speaker_embeds:
-                dim: int = speaker_std.shape[-1]
-                spk_emb = (
-                    torch.randn(dim, device=speaker_std.device, dtype=torch.float32)
-                    .mul_(speaker_std)
-                    .add_(speaker_mean)
-                )
+    if not cfg.use_empty_speaker:
+        if cfg.speaker_embeds_path:
+            with open(cfg.speaker_embeds_path, "rb") as fin:
+                speaker_embeds = pickle.load(fin)
+            for speaker in speaker_embeds:
+                spk_emb = torch.from_numpy(speaker_embeds[speaker]).to(accelerator.device, dtype=torch.float32)
                 spk_emb = torch.nn.Parameter(spk_emb)
                 spk_emb.requires_grad_(True)
                 speaker_embeds[speaker] = spk_emb
+        else:
+            speaker_embeds = dict()
+            for speaker in train_dataset.speakers:
+                if speaker not in speaker_embeds:
+                    dim: int = speaker_std.shape[-1]
+                    spk_emb = torch.randn(dim, device=speaker_std.device, dtype=torch.float32)
+                    spk_emb = torch.nn.Parameter(spk_emb)
+                    spk_emb.requires_grad_(True)
+                    speaker_embeds[speaker] = spk_emb
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=cfg.DATA.train_bs, shuffle=True,
@@ -287,14 +284,22 @@ def main(cfg):
         weight_decay=cfg.solver.adam_weight_decay,
         eps=cfg.solver.adam_epsilon,
     )
-    optimizer.add_param_group(
-        {
-            "params": list(speaker_embeds.values()),
-            "lr": 1e-2,
-            "weight_decay": 0,
-            "betas": [0.9, 0.95],
-        }
-    )
+    if not cfg.use_empty_speaker:
+        optimizer.add_param_group(
+            {
+                "params": list(speaker_embeds.values()),
+                "lr": 1e-2,
+                "weight_decay": 0,
+                "betas": [0.9, 0.95],
+            }
+        )
+
+    # optimizer = optimizer_cls(
+    #     list(speaker_embeds.values()),
+    #     lr=1e-2,
+    #     betas=(0.9, 0.95),
+    #     weight_decay=0
+    # )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(
@@ -435,11 +440,13 @@ def main(cfg):
                 # (batch_size, text_len + mel_len, 768)
                 inputs_embeds = gpt_model.forward(input_ids=input_ids, text_mask=text_mask)
                 text_len = text_input_ids.size(1)
-                for i, speaker in enumerate(batch['speaker']):
-                    speak_e = F.normalize(speaker_embeds[speaker], p=2.0, dim=0, eps=1e-12).unsqueeze_(0)
-                    cond = text_input_ids[i].narrow(-1, 0, 1).eq(tokenizer.spk_emb_ids)
-                    inputs_embeds[i, :text_len] = torch.where(cond, speak_e.to(inputs_embeds.dtype),
-                                                              inputs_embeds[i, :text_len])
+                if not cfg.use_empty_speaker:
+                    for i, speaker in enumerate(batch['speaker']):
+                        spk_emb = speaker_embeds[speaker].mul(speaker_std).add(speaker_mean)
+                        spk_emb = F.normalize(spk_emb, p=2.0, dim=0, eps=1e-12).unsqueeze_(0)
+                        cond = text_input_ids[i].narrow(-1, 0, 1).eq(tokenizer.spk_emb_ids)
+                        inputs_embeds[i, :text_len] = torch.where(cond, spk_emb.to(inputs_embeds.dtype),
+                                                                  inputs_embeds[i, :text_len])
                 outputs = gpt_model.gpt.forward(inputs_embeds=inputs_embeds.to(dtype=weight_dtype),
                                                 attention_mask=attention_mask.to(dtype=weight_dtype))
                 hidden_states = outputs.last_hidden_state
@@ -457,68 +464,85 @@ def main(cfg):
                 )  # (batch_size, mel_len+1, num_vq, num_class_audio)
 
                 # Reshape for processing
-                batch_size, seq_len, num_vq, num_classes = audio_logits.shape
-                # Reshape for easier processing
-                logits_reshaped = audio_logits.reshape(batch_size * seq_len, num_vq,
-                                                       num_classes)  # (batch_size * seq_len, num_vq, num_classes)
-                labels_reshaped = audio_labels.reshape(batch_size * seq_len, num_vq)  # (batch_size * seq_len, num_vq)
-                # Create valid mask
-                valid_mask = (labels_reshaped != IGNORE_TOKEN_ID).any(dim=-1)  # (batch_size * seq_len)
-                # Process only valid positions
-                valid_logits = logits_reshaped[valid_mask]  # (num_valid, num_vq, num_classes)
-                valid_labels = labels_reshaped[valid_mask]  # (num_valid, num_vq)
+                # batch_size, seq_len, num_vq, num_classes = audio_logits.shape
+                # # Reshape for easier processing
+                # logits_reshaped = audio_logits.reshape(batch_size * seq_len, num_vq,
+                #                                        num_classes)  # (batch_size * seq_len, num_vq, num_classes)
+                # labels_reshaped = audio_labels.reshape(batch_size * seq_len, num_vq)  # (batch_size * seq_len, num_vq)
+                # # Create valid mask
+                # valid_mask = (labels_reshaped != IGNORE_TOKEN_ID).any(dim=-1)  # (batch_size * seq_len)
+                # # Process only valid positions
+                # valid_logits = logits_reshaped[valid_mask]  # (num_valid, num_vq, num_classes)
+                # valid_labels = labels_reshaped[valid_mask]  # (num_valid, num_vq)
+                #
+                # # Calculate cross entropy for all possible combinations
+                # losses = []
+                # for pred_idx in range(num_vq):  # For each prediction head
+                #     pred_logits = valid_logits[:, pred_idx]  # (num_valid, num_classes)
+                #     head_losses = []
+                #
+                #     for label_idx in range(num_vq):  # Compare with each possible label
+                #         label = valid_labels[:, label_idx]  # (num_valid)
+                #         loss = F.cross_entropy(
+                #             pred_logits,  # (num_valid, num_classes)
+                #             label,  # (num_valid)
+                #             ignore_index=IGNORE_TOKEN_ID,
+                #             reduction='none'
+                #         )  # (num_valid)
+                #         head_losses.append(loss)
+                #
+                #     # Stack losses for all label combinations for this prediction head
+                #     stacked_head_losses = torch.stack(head_losses, dim=1)  # (num_valid, num_vq)
+                #     # Take minimum loss across all possible labels
+                #     min_head_loss = stacked_head_losses.min(dim=1)[0]  # (num_valid)
+                #     losses.append(min_head_loss)
+                # # Calculate final loss
+                # audio_loss = torch.stack(losses, dim=1).mean()
 
-                # Calculate cross entropy for all possible combinations
-                losses = []
-                for pred_idx in range(num_vq):  # For each prediction head
-                    pred_logits = valid_logits[:, pred_idx]  # (num_valid, num_classes)
-                    head_losses = []
-
-                    for label_idx in range(num_vq):  # Compare with each possible label
-                        label = valid_labels[:, label_idx]  # (num_valid)
-                        loss = F.cross_entropy(
-                            pred_logits,  # (num_valid, num_classes)
-                            label,  # (num_valid)
-                            ignore_index=IGNORE_TOKEN_ID,
-                            reduction='none'
-                        )  # (num_valid)
-                        head_losses.append(loss)
-
-                    # Stack losses for all label combinations for this prediction head
-                    stacked_head_losses = torch.stack(head_losses, dim=1)  # (num_valid, num_vq)
-                    # Take minimum loss across all possible labels
-                    min_head_loss = stacked_head_losses.min(dim=1)[0]  # (num_valid)
-                    losses.append(min_head_loss)
-                # Calculate final loss
-                audio_loss = torch.stack(losses, dim=1).mean()
-
+                audio_loss: torch.Tensor = torch.nn.functional.cross_entropy(
+                    audio_logits.flatten(0, 2), audio_labels.flatten(0, 2), ignore_index=IGNORE_TOKEN_ID
+                )
                 decoder_mel_specs = dvae_decoder(audio_hidden_states[:, :-1].transpose(1, 2))
                 decoder_mel_specs = decoder_mel_specs * mel_attention_mask.unsqueeze(
                     1
                 )  # clip
                 mel_loss = F.l1_loss(decoder_mel_specs, mel_specs)
-                loss = audio_loss + mel_loss
+                loss = audio_loss
 
                 # Calculate accuracy
+                # with torch.no_grad():
+                #     # Get predictions
+                #     predictions = audio_logits.argmax(dim=-1)  # (batch_size, seq_len, num_vq)
+                #
+                #     # Compare predictions with all labels
+                #     matches = torch.eq(
+                #         predictions.unsqueeze(-1),  # (batch_size, seq_len, num_vq, 1)
+                #         audio_labels.unsqueeze(2)  # (batch_size, seq_len, 1, num_vq)
+                #     )  # (batch_size, seq_len, num_vq, num_vq)
+                #
+                #     # If any prediction matches any label at this position, count it as correct
+                #     any_correct = matches.any(dim=(2, 3))  # (batch_size, seq_len)
+                #
+                #     # Calculate accuracy only for valid positions
+                #     valid_positions = (audio_labels != IGNORE_TOKEN_ID).any(dim=-1)  # (batch_size, seq_len)
+                #     accuracy = any_correct[valid_positions].float().mean() if valid_positions.any() else torch.tensor(
+                #         0.0).to(predictions.device)
+                #
+                #     # Gather metrics across all processes
+                #     avg_accuracy = accelerator.gather(accuracy.repeat(cfg.DATA.train_bs)).mean()
+
                 with torch.no_grad():
                     # Get predictions
-                    predictions = audio_logits.argmax(dim=-1)  # (batch_size, seq_len, num_vq)
+                    predictions = audio_logits.flatten(0, 2).argmax(dim=-1)  # (batch_size * mel_len * num_vq)
+                    labels_flat = audio_labels.flatten(0, 2)  # (batch_size * mel_len * num_vq)
+                    # Create mask for valid tokens (not IGNORE_TOKEN_ID)
+                    valid_mask = (labels_flat != IGNORE_TOKEN_ID)
 
-                    # Compare predictions with all labels
-                    matches = torch.eq(
-                        predictions.unsqueeze(-1),  # (batch_size, seq_len, num_vq, 1)
-                        audio_labels.unsqueeze(2)  # (batch_size, seq_len, 1, num_vq)
-                    )  # (batch_size, seq_len, num_vq, num_vq)
+                    # Calculate accuracy only on valid tokens
+                    correct = (predictions[valid_mask] == labels_flat[valid_mask]).float()
+                    accuracy = correct.mean() if valid_mask.any() else torch.tensor(0.0).to(correct.device)
 
-                    # If any prediction matches any label at this position, count it as correct
-                    any_correct = matches.any(dim=(2, 3))  # (batch_size, seq_len)
-
-                    # Calculate accuracy only for valid positions
-                    valid_positions = (audio_labels != IGNORE_TOKEN_ID).any(dim=-1)  # (batch_size, seq_len)
-                    accuracy = any_correct[valid_positions].float().mean() if valid_positions.any() else torch.tensor(
-                        0.0).to(predictions.device)
-
-                    # Gather metrics across all processes
+                    # Gather the accuracy across all processes
                     avg_accuracy = accelerator.gather(accuracy.repeat(cfg.DATA.train_bs)).mean()
 
                 # Gather the losses across all processes for logging (if we use distributed training).
@@ -553,16 +577,18 @@ def main(cfg):
                         unwrap_net = accelerator.unwrap_model(gpt_model)
                         step_checkpoint_dir = os.path.join(checkpoints_dir, f"step-{global_step}")
                         unwrap_net.gpt.save_pretrained(step_checkpoint_dir)
-                        for spk_name in speaker_embeds:
-                            speaker_emb = tokenizer._encode_spk_emb(speaker_embeds[spk_name])
-                            output_path = os.path.join(step_checkpoint_dir, f"{spk_name}.pt")
-                            torch.save(speaker_emb, output_path)
+                        if not cfg.use_empty_speaker:
+                            for spk_name in speaker_embeds:
+                                spk_emb = speaker_embeds[speaker].detach().mul(speaker_std).add(speaker_mean)
+                                spk_emb = tokenizer._encode_spk_emb(spk_emb)
+                                output_path = os.path.join(step_checkpoint_dir, f"{spk_name}.pt")
+                                torch.save(spk_emb, output_path)
 
-                        speaker_embeds_w = {}
-                        for speaker in speaker_embeds:
-                            speaker_embeds_w[speaker] = speaker_embeds[speaker].detach().float().cpu().data.numpy()
-                        with open(os.path.join(step_checkpoint_dir, "speaker_embeds.pkl"), "wb") as fw:
-                            pickle.dump(speaker_embeds_w, fw)
+                            speaker_embeds_w = {}
+                            for speaker in speaker_embeds:
+                                speaker_embeds_w[speaker] = speaker_embeds[speaker].detach().float().cpu().data.numpy()
+                            with open(os.path.join(step_checkpoint_dir, "speaker_embeds.pkl"), "wb") as fw:
+                                pickle.dump(speaker_embeds_w, fw)
 
             logs = {
                 "loss": loss.detach().item(),

@@ -22,6 +22,7 @@ class BaseDataset(Dataset):
                  normalizer=None,
                  sample_rate=24_000,
                  num_vq=4,
+                 use_empty_speaker=False,
                  **kwargs
                  ):
         super(BaseDataset, self).__init__()
@@ -30,6 +31,7 @@ class BaseDataset(Dataset):
         self.normalizer = normalizer
         self.sample_rate = sample_rate
         self.num_vq = num_vq
+        self.use_empty_speaker = use_empty_speaker
         self.data_infos, self.speakers = self.load_data()
 
     def load_data(self, **kwargs):
@@ -82,8 +84,10 @@ class BaseDataset(Dataset):
             do_homophone_replacement,
             lang,
         )
-        # text = f'[Stts][empty_spk]{text}[Ptts]'
-        text = f'[Stts][spk_emb]{text}[Ptts]'
+        if self.use_empty_speaker:
+            text = f'[Stts][empty_spk]{text}[Ptts]'
+        else:
+            text = f'[Stts][spk_emb]{text}[Ptts]'
         input_ids, attention_mask, text_mask = self.tokenizer.encode([text], num_vq=self.num_vq)
         return input_ids.squeeze(0), text_mask.squeeze(0)
 
