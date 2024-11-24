@@ -51,6 +51,7 @@ class ChatTTSPlusPipeline:
         self.logger.info(f"device: {str(self.device)}")
         self.logger.info(f"dtype: {str(self.dtype)}")
         self.load_models(**kwargs)
+        self.load_lora = False
 
     def load_models(self, **kwargs):
         self.models_dict = dict()
@@ -413,11 +414,20 @@ class ChatTTSPlusPipeline:
                 if stream:
                     length = 0
                     pass_batch_count = 0
+                if kwargs.get("lora_path", None):
+                    from peft import PeftModel
+                    self.logger.info(f"load lora into gpt: {kwargs.get('lora_path')}")
+                    peft_model = PeftModel.from_pretrained(self.models_dict['gpt'].gpt,
+                                                           kwargs.get("lora_path"),
+                                                           device_map=self.device,
+                                                           torch_dtype=self.dtype)
+                    peft_model.config.use_cache = True
+                    self.models_dict['gpt'].gpt = peft_model
                 for result in self._infer_code(
                         text,
                         stream,
                         use_decoder,
-                        params_infer_code,
+                        params_infer_code
                 ):
                     wavs = self._decode_to_wavs(
                         result.hiddens if use_decoder else result.ids,
@@ -443,6 +453,10 @@ class ChatTTSPlusPipeline:
                     keep_cols = np.sum(new_wavs != 0, axis=0) > 0
                     # Filter both rows and columns using slicing
                     yield new_wavs[:][:, keep_cols]
+                if kwargs.get("lora_path", None):
+                    self.logger.info("unload lora!")
+                    self.models_dict['gpt'].gpt.unload()
+                    self.models_dict['gpt'].gpt = self.models_dict['gpt'].gpt.base_model
 
     @torch.no_grad()
     def infer(self,

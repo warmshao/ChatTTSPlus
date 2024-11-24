@@ -21,6 +21,7 @@ class BaseCollator:
         audio_maxlen = max(len(item["audio_wavs"]) for item in batch)
         text_maxlen = max(len(item["text_input_ids"]) for item in batch)
 
+        speaker = []
         text = []
         text_input_ids = []
         text_mask = []
@@ -28,6 +29,7 @@ class BaseCollator:
         audio_mask = []
         for x in batch:
             text.append(x["text"])
+            speaker.append(x["speaker"])
             text_input_ids.append(
                 F.pad(
                     x["text_input_ids"],
@@ -57,6 +59,7 @@ class BaseCollator:
                 )
             )
         return {
+            "speaker": speaker,
             "text": text,
             "text_input_ids": torch.stack(text_input_ids),
             "text_mask": torch.stack(text_mask),

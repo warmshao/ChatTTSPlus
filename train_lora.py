@@ -4,7 +4,9 @@
 # @Email   : wenshaoguo1026@gmail.com
 # @Project : ChatTTSPlus
 # @FileName: train_lora.py
-
+"""
+ accelerate launch train_lora.py --config configs/train/train_voice_clone_lora.yaml
+"""
 import logging
 import math
 import os.path
@@ -13,6 +15,7 @@ import numpy as np
 from datetime import timedelta
 from tqdm import tqdm
 import peft
+import pickle
 from accelerate import InitProcessGroupKwargs
 import torch
 import torch.nn as nn
@@ -30,7 +33,7 @@ from huggingface_hub import hf_hub_download
 from transformers.trainer_pt_utils import LabelSmoother
 from vector_quantize_pytorch.residual_fsq import GroupedResidualFSQ
 from einops import rearrange
-
+from peft import PeftConfig, PeftModel
 from chattts_plus.commons.logger import get_logger
 from chattts_plus.commons import constants
 from chattts_plus.models.tokenizer import Tokenizer
@@ -61,23 +64,6 @@ def get_mel_attention_mask(
     for i in range(batch_size):
         mel_attention_mask[i, indices[i]:] = 0
     return mel_attention_mask  # (batch_size, mel_len)
-
-
-def dvae_quantize(
-        quantizer: GroupedResidualFSQ,
-        audio_latents: torch.Tensor,  # (batch_size, audio_dim=1024, mel_len / 2)
-) -> tuple[torch.Tensor, torch.Tensor]:
-    # feat shape (batch_size, mel_len / 2, audio_dim)
-    # ind shape (GFSQ.G, batch_size, mel_len / 2, GFSQ.R)
-    # num_vq=GFSQ.G*GFSQ.R
-    feat, ind = quantizer(audio_latents.transpose(1, 2))
-    audio_quantized_latents = feat.transpose(
-        1, 2
-    )  # (batch_size, audio_dim, mel_len / 2)
-    audio_input_ids = rearrange(
-        ind, "g b t r ->b t (g r)"
-    )  # (batch_size, mel_len / 2, num_vq)
-    return audio_quantized_latents, audio_input_ids
 
 
 def main(cfg):
@@ -126,8 +112,11 @@ def main(cfg):
     dvae_kwargs = cfg.MODELS["dvae_encode"]["kwargs"]
     if not dvae_kwargs["coef"]:
         coef_ = torch.rand(100)
-        dvae_kwargs["coef"] = b14.encode_to_string(coef_.numpy().astype(np.float32).tobytes())
-        logger.info(f"Set DAVE Coef: {dvae_kwargs['coef']}")
+        coef = b14.encode_to_string(coef_.numpy().astype(np.float32).tobytes())
+        dvae_kwargs["coef"] = coef
+        logger.info(f"Set DAVE Encode Coef: {dvae_kwargs['coef']}")
+    else:
+        coef = dvae_kwargs["coef"]
     model_path_org = dvae_kwargs["model_path"]
     model_path_new = os.path.join(constants.CHECKPOINT_DIR, model_path_org.replace("checkpoints/", ""))
     if not os.path.exists(model_path_new):
@@ -140,6 +129,25 @@ def main(cfg):
     dvae_encoder = DVAE(**dvae_kwargs)
     dvae_encoder.eval().to(accelerator.device, dtype=weight_dtype)
     dvae_encoder.requires_grad_(False)
+
+    # load DVAE decoder
+    logger.info("loading DVAE decode >>>")
+    dvae_kwargs = cfg.MODELS["dvae_decode"]["kwargs"]
+    if not dvae_kwargs["coef"]:
+        dvae_kwargs["coef"] = coef
+        logger.info(f"Set DAVE Decode Coef: {dvae_kwargs['coef']}")
+    model_path_org = dvae_kwargs["model_path"]
+    model_path_new = os.path.join(constants.CHECKPOINT_DIR, model_path_org.replace("checkpoints/", ""))
+    if not os.path.exists(model_path_new):
+        logger.info(f"{model_path_new} not exists! Need to download from HuggingFace")
+        hf_hub_download(repo_id="2Noise/ChatTTS", subfolder="asset",
+                        filename=os.path.basename(model_path_new),
+                        local_dir=constants.CHECKPOINT_DIR)
+        logger.info(f"download {model_path_new} from 2Noise/ChatTTS")
+    dvae_kwargs["model_path"] = model_path_new
+    dvae_decoder = DVAE(**dvae_kwargs)
+    dvae_decoder.eval().to(accelerator.device, dtype=weight_dtype)
+    dvae_decoder.requires_grad_(False)
 
     # Load GPT
     logger.info("loading GPT model >>>")
@@ -163,15 +171,89 @@ def main(cfg):
     lora_config = LoraConfig(
         r=lora_cfg['lora_r'],
         lora_alpha=lora_cfg['lora_alpha'],
-        target_modules=["q_proj", "v_proj", "k_proj", "o_proj", "gate_proj", "down_proj", "up_proj"],
+        target_modules=lora_cfg['lora_target_modules'],
         lora_dropout=lora_cfg['lora_dropout']
     )
     peft_model = get_peft_model(gpt_model.gpt, lora_config)
     peft_model.config.use_cache = False
     if cfg.lora_model_path and os.path.exists(cfg.lora_model_path):
         logger.info(f"loading lora weight: {cfg.lora_model_path} >>>")
-        peft.set_peft_model_state_dict(peft_model, peft.load_peft_weights(cfg.lora_model_path))
+        state_dict = None
+        if cfg.lora_model_path.endswith(".safetensors"):
+            from safetensors.torch import load_file
+            state_dict = load_file("model.safetensors")
+        elif cfg.lora_model_path.endswith(".pth") or cfg.lora_model_path.endswith(".pt"):
+            state_dict = torch.load(cfg.lora_model_path)
+        elif os.path.isdir(cfg.lora_model_path):
+            state_dict = peft.load_peft_weights(cfg.lora_model_path)
+        else:
+            logger.error(f"cannot load {cfg.lora_model_path}")
+        if state_dict is not None:
+            peft.set_peft_model_state_dict(peft_model, state_dict)
     gpt_model.gpt = peft_model
+
+    # speaker embedding
+    spk_stat_path = os.path.join(constants.CHECKPOINT_DIR, "asset/spk_stat.pt")
+    if not os.path.exists(spk_stat_path):
+        logger.warning(f"{spk_stat_path} not exists! Need to download from HuggingFace")
+        hf_hub_download(repo_id="2Noise/ChatTTS", subfolder="asset",
+                        filename=os.path.basename(spk_stat_path),
+                        local_dir=constants.CHECKPOINT_DIR)
+        logger.info(f"download {spk_stat_path} from 2Noise/ChatTTS")
+    logger.info(f"loading speaker stat: {spk_stat_path}")
+    assert os.path.exists(spk_stat_path), f"Missing spk_stat.pt: {spk_stat_path}"
+    spk_stat: torch.Tensor = torch.load(
+        spk_stat_path,
+        weights_only=True,
+        mmap=True
+    ).to(accelerator.device, dtype=weight_dtype)
+    speaker_std, speaker_mean = spk_stat.chunk(2)
+
+    # dataset
+    normalizer_json = os.path.join(constants.CHECKPOINT_DIR, "homophones_map.json")
+    if not os.path.exists(normalizer_json):
+        logger.warning(f"{normalizer_json} not exists! Need to download from HuggingFace")
+        hf_hub_download(repo_id="warmshao/ChatTTSPlus",
+                        filename=os.path.basename(normalizer_json),
+                        local_dir=constants.CHECKPOINT_DIR)
+        logger.info(f"download {normalizer_json} from warmshao/ChatTTSPlus")
+    logger.info(f"loading normalizer: {normalizer_json}")
+    normalizer = norm.Normalizer(normalizer_json)
+
+    train_dataset = BaseDataset(
+        meta_infos=cfg.DATA.meta_infos,
+        sample_rate=cfg.DATA.sample_rate,
+        num_vq=cfg.DATA.num_vq,
+        tokenizer=tokenizer,
+        normalizer=normalizer
+    )
+
+    if cfg.speaker_embeds_path:
+        with open(cfg.speaker_embeds_path, "rb") as fin:
+            speaker_embeds = pickle.load(fin)
+        for speaker in speaker_embeds:
+            spk_emb = torch.from_numpy(speaker_embeds[speaker]).to(accelerator.device, dtype=torch.float32)
+            spk_emb = torch.nn.Parameter(spk_emb)
+            spk_emb.requires_grad_(True)
+            speaker_embeds[speaker] = spk_emb
+    else:
+        speaker_embeds = dict()
+        for speaker in train_dataset.speakers:
+            if speaker not in speaker_embeds:
+                dim: int = speaker_std.shape[-1]
+                spk_emb = (
+                    torch.randn(dim, device=speaker_std.device, dtype=torch.float32)
+                    .mul_(speaker_std)
+                    .add_(speaker_mean)
+                )
+                spk_emb = torch.nn.Parameter(spk_emb)
+                spk_emb.requires_grad_(True)
+                speaker_embeds[speaker] = spk_emb
+
+    train_dataloader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=cfg.DATA.train_bs, shuffle=True,
+        num_workers=min(cfg.DATA.train_bs, 4), drop_last=True, collate_fn=BaseCollator()
+    )
 
     if cfg.solver.scale_lr:
         learning_rate = (
@@ -205,28 +287,13 @@ def main(cfg):
         weight_decay=cfg.solver.adam_weight_decay,
         eps=cfg.solver.adam_epsilon,
     )
-
-    # dataset
-    normalizer_json = os.path.join(constants.CHECKPOINT_DIR, "homophones_map.json")
-    if not os.path.exists(normalizer_json):
-        logger.warning(f"{normalizer_json} not exists! Need to download from HuggingFace")
-        hf_hub_download(repo_id="warmshao/ChatTTSPlus",
-                        filename=os.path.basename(normalizer_json),
-                        local_dir=constants.CHECKPOINT_DIR)
-        logger.info(f"download {normalizer_json} from warmshao/ChatTTSPlus")
-    logger.info(f"loading normalizer: {normalizer_json}")
-    normalizer = norm.Normalizer(normalizer_json)
-
-    train_dataset = BaseDataset(
-        meta_infos=cfg.DATA.meta_infos,
-        sample_rate=cfg.DATA.sample_rate,
-        num_vq=cfg.DATA.num_vq,
-        tokenizer=tokenizer,
-        normalizer=normalizer
-    )
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=cfg.DATA.train_bs, shuffle=True,
-        num_workers=min(cfg.DATA.train_bs, 4), drop_last=True, collate_fn=BaseCollator()
+    optimizer.add_param_group(
+        {
+            "params": list(speaker_embeds.values()),
+            "lr": 1e-2,
+            "weight_decay": 0,
+            "betas": [0.9, 0.95],
+        }
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -301,9 +368,15 @@ def main(cfg):
                 audio_wavs = audio_wavs.to(accelerator.device, dtype=weight_dtype, non_blocking=True)
                 audio_wavs_mask = audio_wavs_mask.to(accelerator.device, dtype=weight_dtype, non_blocking=True)
                 with torch.no_grad():
+                    mel_specs = dvae_encoder.preprocessor_mel(audio_wavs)
                     dvae_audio_input_ids = dvae_encoder(audio_wavs, mode="encode").permute(0, 2, 1).clone()
                     mel_attention_mask = get_mel_attention_mask(audio_wavs_mask,
                                                                 mel_len=dvae_audio_input_ids.size(1) * 2)
+                    if mel_attention_mask.shape[1] > mel_specs.shape[2]:
+                        mel_attention_mask = mel_attention_mask[:, :mel_specs.shape[2]]
+                    else:
+                        mel_specs = mel_specs[:, :, :mel_attention_mask.shape[1]]
+                    mel_specs = mel_specs * mel_attention_mask.unsqueeze(1)
                     audio_attention_mask = mel_attention_mask[:, ::2]
                     dvae_audio_input_ids[~audio_attention_mask.bool()] = AUDIO_PAD_TOKEN_ID
 
@@ -361,10 +434,16 @@ def main(cfg):
                     labels[~attention_mask.bool()] = IGNORE_TOKEN_ID
                 # (batch_size, text_len + mel_len, 768)
                 inputs_embeds = gpt_model.forward(input_ids=input_ids, text_mask=text_mask)
+                text_len = text_input_ids.size(1)
+                for i, speaker in enumerate(batch['speaker']):
+                    speak_e = F.normalize(speaker_embeds[speaker], p=2.0, dim=0, eps=1e-12).unsqueeze_(0)
+                    cond = text_input_ids[i].narrow(-1, 0, 1).eq(tokenizer.spk_emb_ids)
+                    inputs_embeds[i, :text_len] = torch.where(cond, speak_e.to(inputs_embeds.dtype),
+                                                              inputs_embeds[i, :text_len])
                 outputs = gpt_model.gpt.forward(inputs_embeds=inputs_embeds.to(dtype=weight_dtype),
                                                 attention_mask=attention_mask.to(dtype=weight_dtype))
                 hidden_states = outputs.last_hidden_state
-                text_len = text_input_ids.size(1)
+
                 audio_hidden_states = hidden_states[
                                       :, text_len - 1: -1
                                       ]  # (batch_size, mel_len+1, 768)
@@ -376,22 +455,84 @@ def main(cfg):
                     ],
                     dim=2,
                 )  # (batch_size, mel_len+1, num_vq, num_class_audio)
-                audio_loss: torch.Tensor = torch.nn.functional.cross_entropy(
-                    audio_logits.flatten(0, 2), audio_labels.flatten(0, 2)
-                )
-                loss = audio_loss
+
+                # Reshape for processing
+                batch_size, seq_len, num_vq, num_classes = audio_logits.shape
+                # Reshape for easier processing
+                logits_reshaped = audio_logits.reshape(batch_size * seq_len, num_vq,
+                                                       num_classes)  # (batch_size * seq_len, num_vq, num_classes)
+                labels_reshaped = audio_labels.reshape(batch_size * seq_len, num_vq)  # (batch_size * seq_len, num_vq)
+                # Create valid mask
+                valid_mask = (labels_reshaped != IGNORE_TOKEN_ID).any(dim=-1)  # (batch_size * seq_len)
+                # Process only valid positions
+                valid_logits = logits_reshaped[valid_mask]  # (num_valid, num_vq, num_classes)
+                valid_labels = labels_reshaped[valid_mask]  # (num_valid, num_vq)
+
+                # Calculate cross entropy for all possible combinations
+                losses = []
+                for pred_idx in range(num_vq):  # For each prediction head
+                    pred_logits = valid_logits[:, pred_idx]  # (num_valid, num_classes)
+                    head_losses = []
+
+                    for label_idx in range(num_vq):  # Compare with each possible label
+                        label = valid_labels[:, label_idx]  # (num_valid)
+                        loss = F.cross_entropy(
+                            pred_logits,  # (num_valid, num_classes)
+                            label,  # (num_valid)
+                            ignore_index=IGNORE_TOKEN_ID,
+                            reduction='none'
+                        )  # (num_valid)
+                        head_losses.append(loss)
+
+                    # Stack losses for all label combinations for this prediction head
+                    stacked_head_losses = torch.stack(head_losses, dim=1)  # (num_valid, num_vq)
+                    # Take minimum loss across all possible labels
+                    min_head_loss = stacked_head_losses.min(dim=1)[0]  # (num_valid)
+                    losses.append(min_head_loss)
+                # Calculate final loss
+                audio_loss = torch.stack(losses, dim=1).mean()
+
+                decoder_mel_specs = dvae_decoder(audio_hidden_states[:, :-1].transpose(1, 2))
+                decoder_mel_specs = decoder_mel_specs * mel_attention_mask.unsqueeze(
+                    1
+                )  # clip
+                mel_loss = F.l1_loss(decoder_mel_specs, mel_specs)
+                loss = audio_loss + mel_loss
+
+                # Calculate accuracy
+                with torch.no_grad():
+                    # Get predictions
+                    predictions = audio_logits.argmax(dim=-1)  # (batch_size, seq_len, num_vq)
+
+                    # Compare predictions with all labels
+                    matches = torch.eq(
+                        predictions.unsqueeze(-1),  # (batch_size, seq_len, num_vq, 1)
+                        audio_labels.unsqueeze(2)  # (batch_size, seq_len, 1, num_vq)
+                    )  # (batch_size, seq_len, num_vq, num_vq)
+
+                    # If any prediction matches any label at this position, count it as correct
+                    any_correct = matches.any(dim=(2, 3))  # (batch_size, seq_len)
+
+                    # Calculate accuracy only for valid positions
+                    valid_positions = (audio_labels != IGNORE_TOKEN_ID).any(dim=-1)  # (batch_size, seq_len)
+                    accuracy = any_correct[valid_positions].float().mean() if valid_positions.any() else torch.tensor(
+                        0.0).to(predictions.device)
+
+                    # Gather metrics across all processes
+                    avg_accuracy = accelerator.gather(accuracy.repeat(cfg.DATA.train_bs)).mean()
 
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(cfg.DATA.train_bs)).mean()
                 train_loss += avg_loss.item() / cfg.solver.gradient_accumulation_steps
+                train_accuracy = avg_accuracy.item()
 
                 # Backpropagate
                 accelerator.backward(loss)
-                # if accelerator.sync_gradients:
-                #     accelerator.clip_grad_norm_(
-                #         trainable_params,
-                #         cfg.solver.max_grad_norm,
-                #     )
+                if accelerator.sync_gradients:
+                    accelerator.clip_grad_norm_(
+                        trainable_params,
+                        cfg.solver.max_grad_norm,
+                    )
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -399,17 +540,35 @@ def main(cfg):
             if accelerator.sync_gradients:
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                accelerator.log({"train_loss": train_loss, "train_acc": train_accuracy}, step=global_step)
                 if accelerator.is_main_process:
                     tf_writer.add_scalar('train_loss', train_loss, global_step)
+                    tf_writer.add_scalar('train_acc', train_accuracy, global_step)
+                    tf_writer.add_scalar('train_mel_loss', mel_loss.detach().item(), global_step)
+                    tf_writer.add_scalar('train_audio_loss', audio_loss.detach().item(), global_step)
                 train_loss = 0.0
 
                 if global_step == 1 or global_step % cfg.checkpointing_steps == 0:
                     if accelerator.is_main_process:
                         unwrap_net = accelerator.unwrap_model(gpt_model)
-                        unwrap_net.gpt.save_pretrained(os.path.join(checkpoints_dir, f"step-{global_step}"))
+                        step_checkpoint_dir = os.path.join(checkpoints_dir, f"step-{global_step}")
+                        unwrap_net.gpt.save_pretrained(step_checkpoint_dir)
+                        for spk_name in speaker_embeds:
+                            speaker_emb = tokenizer._encode_spk_emb(speaker_embeds[spk_name])
+                            output_path = os.path.join(step_checkpoint_dir, f"{spk_name}.pt")
+                            torch.save(speaker_emb, output_path)
+
+                        speaker_embeds_w = {}
+                        for speaker in speaker_embeds:
+                            speaker_embeds_w[speaker] = speaker_embeds[speaker].detach().float().cpu().data.numpy()
+                        with open(os.path.join(step_checkpoint_dir, "speaker_embeds.pkl"), "wb") as fw:
+                            pickle.dump(speaker_embeds_w, fw)
+
             logs = {
-                "step_loss": loss.detach().item(),
+                "loss": loss.detach().item(),
+                "audio_loss": audio_loss.detach().item(),
+                "mel_loss": mel_loss.detach().item(),
+                "step_acc": train_accuracy,
                 "lr": lr_scheduler.get_last_lr()[0]
             }
             progress_bar.set_postfix(**logs)

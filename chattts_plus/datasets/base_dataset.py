@@ -30,24 +30,27 @@ class BaseDataset(Dataset):
         self.normalizer = normalizer
         self.sample_rate = sample_rate
         self.num_vq = num_vq
-        self.data_infos = self.load_data()
+        self.data_infos, self.speakers = self.load_data()
 
     def load_data(self, **kwargs):
         data_infos = []
+        speakers = set()
         for info_path in self.meta_infos:
             data_root = os.path.dirname(info_path)
             with open(info_path, "r", encoding='UTF-8') as fin:
                 for line in fin.readlines():
                     line_splits = line.strip().replace('\n', '').split("|")
                     if len(line_splits) == 4:
+                        speakers.add(line_splits[0])
                         data_infos.append(
                             {
-                                "audio_path": os.path.join(data_root, line_splits[1], line_splits[0]),
+                                "speaker": line_splits[0],
+                                "audio_path": os.path.join(data_root, line_splits[1]),
                                 "text": line_splits[-1],
                                 "lang": line_splits[2].lower()
                             }
                         )
-        return data_infos
+        return data_infos, speakers
 
     def __len__(self):
         return len(self.data_infos)
@@ -57,6 +60,7 @@ class BaseDataset(Dataset):
         audio_wavs, audio_mask = self.preprocess_audio(data_info_["audio_path"])
         text_input_ids, text_mask = self.preprocess_text(data_info_["text"], data_info_["lang"])
         return {
+            "speaker": data_info_["speaker"],
             "text": data_info_["text"],
             "audio_wavs": audio_wavs,
             "audio_mask": audio_mask,
@@ -78,7 +82,8 @@ class BaseDataset(Dataset):
             do_homophone_replacement,
             lang,
         )
-        text = f'[Stts][empty_spk]{text}[Ptts]'
+        # text = f'[Stts][empty_spk]{text}[Ptts]'
+        text = f'[Stts][spk_emb]{text}[Ptts]'
         input_ids, attention_mask, text_mask = self.tokenizer.encode([text], num_vq=self.num_vq)
         return input_ids.squeeze(0), text_mask.squeeze(0)
 
