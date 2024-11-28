@@ -6,6 +6,7 @@
 # @FileName: base_dataset.py
 
 import os.path
+import pdb
 
 import torch
 import torchaudio
@@ -47,7 +48,7 @@ class BaseDataset(Dataset):
                         data_infos.append(
                             {
                                 "speaker": line_splits[0],
-                                "audio_path": os.path.join(data_root, line_splits[1]),
+                                "audio_path": line_splits[1],
                                 "text": line_splits[-1],
                                 "lang": line_splits[2].lower()
                             }

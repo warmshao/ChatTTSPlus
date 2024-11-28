@@ -44,8 +44,7 @@ from chattts_plus.datasets.collator import BaseCollator
 from chattts_plus.commons import norm
 
 IGNORE_TOKEN_ID = LabelSmoother.ignore_index
-AUDIO_EOS_TOKEN_ID: int = 0
-AUDIO_PAD_TOKEN_ID: int = AUDIO_EOS_TOKEN_ID
+AUDIO_PAD_TOKEN_ID: int = 0
 
 warnings.filterwarnings("ignore")
 
@@ -281,8 +280,7 @@ def main(cfg):
         trainable_params,
         lr=learning_rate,
         betas=(cfg.solver.adam_beta1, cfg.solver.adam_beta2),
-        weight_decay=cfg.solver.adam_weight_decay,
-        eps=cfg.solver.adam_epsilon,
+        weight_decay=cfg.solver.adam_weight_decay
     )
     if not cfg.use_empty_speaker:
         optimizer.add_param_group(
@@ -309,9 +307,10 @@ def main(cfg):
     num_train_epochs = math.ceil(
         cfg.solver.max_train_steps / num_update_steps_per_epoch
     )
-    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, num_train_epochs, cfg.solver.min_learning_rate
-    )
+    # lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+    #     optimizer, num_train_epochs, cfg.solver.min_learning_rate
+    # )
+    lr_scheduler = torch.optim.lr_scheduler.ConstantLR(optimizer)
 
     # Prepare everything with our `accelerator`.
     (
@@ -373,15 +372,15 @@ def main(cfg):
                 audio_wavs = audio_wavs.to(accelerator.device, dtype=weight_dtype, non_blocking=True)
                 audio_wavs_mask = audio_wavs_mask.to(accelerator.device, dtype=weight_dtype, non_blocking=True)
                 with torch.no_grad():
-                    mel_specs = dvae_encoder.preprocessor_mel(audio_wavs)
+                    # mel_specs = dvae_encoder.preprocessor_mel(audio_wavs)
                     dvae_audio_input_ids = dvae_encoder(audio_wavs, mode="encode").permute(0, 2, 1).clone()
                     mel_attention_mask = get_mel_attention_mask(audio_wavs_mask,
                                                                 mel_len=dvae_audio_input_ids.size(1) * 2)
-                    if mel_attention_mask.shape[1] > mel_specs.shape[2]:
-                        mel_attention_mask = mel_attention_mask[:, :mel_specs.shape[2]]
-                    else:
-                        mel_specs = mel_specs[:, :, :mel_attention_mask.shape[1]]
-                    mel_specs = mel_specs * mel_attention_mask.unsqueeze(1)
+                    # if mel_attention_mask.shape[1] > mel_specs.shape[2]:
+                    #     mel_attention_mask = mel_attention_mask[:, :mel_specs.shape[2]]
+                    # else:
+                    #     mel_specs = mel_specs[:, :, :mel_attention_mask.shape[1]]
+                    # mel_specs = mel_specs * mel_attention_mask.unsqueeze(1)
                     audio_attention_mask = mel_attention_mask[:, ::2]
                     dvae_audio_input_ids[~audio_attention_mask.bool()] = AUDIO_PAD_TOKEN_ID
 
@@ -410,6 +409,7 @@ def main(cfg):
                         dim=1,
                     )  # (batch_size, mel_len+1, num_vq)
                     indices = audio_attention_mask.int().sum(dim=1)  # (batch_size,)
+                    AUDIO_EOS_TOKEN_ID = int(gpt_model.emb_code[0].num_embeddings - 1)
                     for i in range(batch_size):
                         extended_audio_attention_mask[i, indices[i]] = 1
                         extended_audio_input_ids[i, indices[i]] = AUDIO_EOS_TOKEN_ID
@@ -435,7 +435,7 @@ def main(cfg):
                     )
 
                     # set labels
-                    labels = input_ids.clone()  # (batch_size, text_len + mel_len + 1, num_vq)
+                    labels = input_ids.detach().clone()  # (batch_size, text_len + mel_len + 1, num_vq)
                     labels[~attention_mask.bool()] = IGNORE_TOKEN_ID
                 # (batch_size, text_len + mel_len, 768)
                 inputs_embeds = gpt_model.forward(input_ids=input_ids, text_mask=text_mask)
@@ -499,37 +499,15 @@ def main(cfg):
                 # # Calculate final loss
                 # audio_loss = torch.stack(losses, dim=1).mean()
 
-                audio_loss: torch.Tensor = torch.nn.functional.cross_entropy(
+                audio_loss = torch.nn.functional.cross_entropy(
                     audio_logits.flatten(0, 2), audio_labels.flatten(0, 2), ignore_index=IGNORE_TOKEN_ID
                 )
-                decoder_mel_specs = dvae_decoder(audio_hidden_states[:, :-1].transpose(1, 2))
-                decoder_mel_specs = decoder_mel_specs * mel_attention_mask.unsqueeze(
-                    1
-                )  # clip
-                mel_loss = F.l1_loss(decoder_mel_specs, mel_specs)
                 loss = audio_loss
-
-                # Calculate accuracy
-                # with torch.no_grad():
-                #     # Get predictions
-                #     predictions = audio_logits.argmax(dim=-1)  # (batch_size, seq_len, num_vq)
-                #
-                #     # Compare predictions with all labels
-                #     matches = torch.eq(
-                #         predictions.unsqueeze(-1),  # (batch_size, seq_len, num_vq, 1)
-                #         audio_labels.unsqueeze(2)  # (batch_size, seq_len, 1, num_vq)
-                #     )  # (batch_size, seq_len, num_vq, num_vq)
-                #
-                #     # If any prediction matches any label at this position, count it as correct
-                #     any_correct = matches.any(dim=(2, 3))  # (batch_size, seq_len)
-                #
-                #     # Calculate accuracy only for valid positions
-                #     valid_positions = (audio_labels != IGNORE_TOKEN_ID).any(dim=-1)  # (batch_size, seq_len)
-                #     accuracy = any_correct[valid_positions].float().mean() if valid_positions.any() else torch.tensor(
-                #         0.0).to(predictions.device)
-                #
-                #     # Gather metrics across all processes
-                #     avg_accuracy = accelerator.gather(accuracy.repeat(cfg.DATA.train_bs)).mean()
+                # decoder_mel_specs = dvae_encoder(audio_hidden_states[:, :-1].transpose(1, 2))
+                # decoder_mel_specs = decoder_mel_specs * mel_attention_mask.unsqueeze(
+                #     1
+                # )
+                # mel_loss = F.l1_loss(decoder_mel_specs, mel_specs)
 
                 with torch.no_grad():
                     # Get predictions
@@ -552,11 +530,11 @@ def main(cfg):
 
                 # Backpropagate
                 accelerator.backward(loss)
-                if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(
-                        trainable_params,
-                        cfg.solver.max_grad_norm,
-                    )
+                # if accelerator.sync_gradients:
+                #     accelerator.clip_grad_norm_(
+                #         trainable_params,
+                #         cfg.solver.max_grad_norm,
+                #     )
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -568,7 +546,7 @@ def main(cfg):
                 if accelerator.is_main_process:
                     tf_writer.add_scalar('train_loss', train_loss, global_step)
                     tf_writer.add_scalar('train_acc', train_accuracy, global_step)
-                    tf_writer.add_scalar('train_mel_loss', mel_loss.detach().item(), global_step)
+                    # tf_writer.add_scalar('train_mel_loss', mel_loss.detach().item(), global_step)
                     tf_writer.add_scalar('train_audio_loss', audio_loss.detach().item(), global_step)
                 train_loss = 0.0
 
@@ -593,7 +571,7 @@ def main(cfg):
             logs = {
                 "loss": loss.detach().item(),
                 "audio_loss": audio_loss.detach().item(),
-                "mel_loss": mel_loss.detach().item(),
+                # "mel_loss": mel_loss.detach().item(),
                 "step_acc": train_accuracy,
                 "lr": lr_scheduler.get_last_lr()[0]
             }

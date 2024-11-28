@@ -21,32 +21,30 @@ def test_chattts_plus_pipeline():
     pipeline = ChatTTSPlusPipeline(infer_cfg, device=torch.device("cuda"))
 
     params_infer_code = InferCodeParams(
-        prompt="[speed_5]",
+        prompt="[speed_3]",
         temperature=.0003,
         max_new_token=2048,
         top_P=0.7,
         top_K=20
     )
     params_refine_text = RefineTextParams(
-        prompt='[oral_2][laugh_0][break_4]',
+        prompt='[oral_2][laugh_3][break_4]',
         top_P=0.7,
         top_K=20,
-        temperature=0.3,
+        temperature=0.7,
         max_new_token=384
     )
-    infer_text = [
-        "这部电影剧情紧凑，拍摄手法也很独特"
-                  ]
+    infer_text = ["我是雷军的数字克隆人，你觉得我说话像吗"]
     t0 = time.time()
-    lora_path = "outputs/xionger_lora-1732444657.8262188/checkpoints/step-900"
-    speaker_emb_path = "outputs/xionger_lora-1732444657.8262188/checkpoints/step-900/xionger.pt"
+    lora_path = "outputs/leijun_lora-1732757371.9375331/checkpoints/step-5000"
+    speaker_emb_path = ""
     pipe_res_gen = pipeline.infer(
         infer_text,
         params_refine_text=params_refine_text,
         params_infer_code=params_infer_code,
         use_decoder=True,
         stream=False,
-        skip_refine_text=True,
+        skip_refine_text=False,
         do_text_normalization=True,
         do_homophone_replacement=True,
         do_text_optimization=True,
@@ -59,7 +57,7 @@ def test_chattts_plus_pipeline():
     print("total infer time:{} sec".format(time.time() - t0))
     save_dir = "results/chattts_plus"
     os.makedirs(save_dir, exist_ok=True)
-    audio_save_path = f"{save_dir}/{os.path.basename(speaker_emb_path)}-{time.time()}.wav"
+    audio_save_path = f"{save_dir}/{os.path.basename(lora_path)}-{time.time()}.wav"
     torchaudio.save(audio_save_path, torch.cat(wavs).cpu().float().unsqueeze(0), 24000)
     print(audio_save_path)
 
