@@ -65,45 +65,28 @@ MODELS:
 DATA:
   train_bs: 4
   meta_infos:
-    - "data/liyunlong/asr_opt/denoise_opt.list"
+    - "data/xionger/slicer_opt.list"
   sample_rate: 24000
   num_vq: 4
-
-LORA:
-  lora_r: 8
-  lora_alpha: 16
-  lora_dropout: 0.01
-  lora_target_modules:
-    - "q_proj"
-    - "v_proj"
-    - "k_proj"
-    - "o_proj"
-    - "gate_proj"
-    - "up_proj"
-    - "down_proj"
 
 solver:
   gradient_accumulation_steps: 1
   mixed_precision: 'fp16'
   gradient_checkpointing: false
-  max_train_steps: 4000
+  max_train_steps: 40000
   max_grad_norm: 1.0
   # lr
-  learning_rate: 5e-5
-  min_learning_rate: 1e-5
+  learning_rate: 1e-2
   scale_lr: false
   lr_warmup_steps: 10
   lr_scheduler: 'constant'
 
   # optimizer
   use_8bit_adam: false
-  adam_beta1: 0.9
-  adam_beta2: 0.95
-  adam_weight_decay: 0
 
 weight_dtype: 'fp16'
 output_dir: './outputs'
-exp_name: "liyunlong_lora"
-lora_model_path: "outputs/xionger_lora-1732809910.2932503/checkpoints/step-600"
-checkpointing_steps: 1000
-use_empty_speaker: true
+exp_name: "xionger_speaker_emb"
+speaker_embeds_path: "outputs/xionger_speaker_emb-1732894509.8451874/checkpoints/step-4000/speaker_embeds.pkl"
+checkpointing_steps: 100
+use_empty_speaker: false
