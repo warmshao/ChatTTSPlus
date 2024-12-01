@@ -65,7 +65,7 @@ MODELS:
 DATA:
   train_bs: 4
   meta_infos:
-    - "data/liyunlong/asr_opt/denoise_opt.list"
+    - "data/lyl2/asr_opt/denoise_opt.list"
   sample_rate: 24000
   num_vq: 4
 
@@ -99,11 +99,11 @@ solver:
   use_8bit_adam: false
   adam_beta1: 0.9
   adam_beta2: 0.95
-  adam_weight_decay: 0
+  adam_weight_decay: 1e-3
 
 weight_dtype: 'fp16'
 output_dir: './outputs'
 exp_name: "liyunlong_lora"
-lora_model_path: "outputs/xionger_lora-1732809910.2932503/checkpoints/step-600"
-checkpointing_steps: 1000
+lora_model_path: ""
+checkpointing_steps: 100
 use_empty_speaker: true

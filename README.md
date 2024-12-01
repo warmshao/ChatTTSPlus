@@ -14,7 +14,7 @@ ChatTTSPlus is an extension of [ChatTTS](https://github.com/2noise/ChatTTS), add
 - [x] Refactored ChatTTS code in a way I'm familiar with.
 - [x] **Achieved over 3x acceleration with TensorRT**, increasing performance on a Windows 3060 GPU from 28 tokens/s to 110 tokens/s.
 - [x] Windows integration package for one-click extraction and use.
-- [x] Implemented voice cloning using technologies like LoRA.
+- [x] Implemented voice cloning using technologies like LoRA. Please reference [voice_clone](assets/docs/voice_clone.md).
 - [ ] Model compression and acceleration using techniques like pruning and knowledge distillation, targeting mobile deployment.
 
 ### Environment Setup
@@ -36,6 +36,9 @@ ChatTTSPlus inherits the license from [ChatTTS](https://github.com/2noise/ChatTT
 The code is published under the AGPLv3+ license.
 
 The model is published under the CC BY-NC 4.0 license. It is intended for educational and research use and should not be used for any commercial or illegal purposes. The authors do not guarantee the accuracy, completeness, or reliability of the information. The information and data used in this repository are for academic and research purposes only. The data is obtained from publicly available sources, and the authors do not claim any ownership or copyright over the data.
+
+### Disclaimer
+We do not hold any responsibility for any illegal usage of the codebase. Please refer to your local laws about DMCA and other related laws.
 
 ### About Me
 I'm an algorithm engineer focused on implementing AIGC and LLM-related products. If you have any needs for entrepreneurship, collaboration, or customization, feel free to add me on Discord (warmshao) or on WeChat:

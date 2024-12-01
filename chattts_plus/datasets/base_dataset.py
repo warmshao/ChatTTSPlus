@@ -39,20 +39,18 @@ class BaseDataset(Dataset):
         data_infos = []
         speakers = set()
         for info_path in self.meta_infos:
-            data_root = os.path.dirname(info_path)
             with open(info_path, "r", encoding='UTF-8') as fin:
                 for line in fin.readlines():
                     line_splits = line.strip().replace('\n', '').split("|")
-                    if len(line_splits) == 4:
-                        speakers.add(line_splits[0])
-                        data_infos.append(
-                            {
-                                "speaker": line_splits[0],
-                                "audio_path": line_splits[1],
-                                "text": line_splits[-1],
-                                "lang": line_splits[2].lower()
-                            }
-                        )
+                    speakers.add(line_splits[0])
+                    data_infos.append(
+                        {
+                            "speaker": line_splits[0],
+                            "audio_path": line_splits[1],
+                            "text": line_splits[-1],
+                            "lang": line_splits[-2].lower()
+                        }
+                    )
         return data_infos, speakers
 
     def __len__(self):

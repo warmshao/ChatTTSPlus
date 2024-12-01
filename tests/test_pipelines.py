@@ -21,7 +21,7 @@ def test_chattts_plus_pipeline():
     pipeline = ChatTTSPlusPipeline(infer_cfg, device=torch.device("cuda"))
 
     params_infer_code = InferCodeParams(
-        prompt="[speed_4]",
+        prompt="[speed_3]",
         temperature=.0003,
         max_new_token=2048,
         top_P=0.7,
@@ -34,12 +34,11 @@ def test_chattts_plus_pipeline():
         temperature=0.7,
         max_new_token=384
     )
-    infer_text = ["我是雷军的数字克隆人，你觉得我说话像吗? 我们针对对话式任务进行了优化，能够实现自然且富有表现力的合成语音。它支持多个说话者，便于生成互动式对话。该模型可以预测和控制精细的韵律特征，包括笑声、停顿和插入语。我给你笑一下 哈哈哈哈"]
+    infer_text = ["他娘的，我们针对对话式任务进行了优化，能够实现自然且富有表现力的合成语音"]
     t0 = time.time()
     # leijun: outputs/leijun_lora-1732802535.8597126/checkpoints/step-2000
     # xionger: outputs/xionger_lora-1732809910.2932503/checkpoints/step-600
-    lora_path = "outputs/xionger_lora-1732809910.2932503/checkpoints/step-600"
-    speaker_emb_path = "outputs/xionger_speaker_emb-1732894509.8451874/checkpoints/step-4000/xionger.pt"
+    lora_path = "outputs/liyunlong_lora-1733020022.0272408/checkpoints/step-2200"
     pipe_res_gen = pipeline.infer(
         infer_text,
         params_refine_text=params_refine_text,
@@ -50,8 +49,8 @@ def test_chattts_plus_pipeline():
         do_text_normalization=True,
         do_homophone_replacement=True,
         do_text_optimization=True,
-        lora_path='',
-        speaker_emb_path=speaker_emb_path
+        lora_path=lora_path,
+        speaker_emb_path=''
     )
     wavs = []
     for wavs_ in pipe_res_gen:

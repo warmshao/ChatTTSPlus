@@ -2,29 +2,26 @@
 # @Time    : 2024/9/22 18:06
 # @Project : ChatTTSPlus
 # @FileName: chattts_plus_pipeline.py
-import math
-import os.path
-import pdb
-import time
 import lzma
-import torch
-import torchaudio
-import vocos
-from tqdm import tqdm
+import os.path
+import time
+from typing import Union
+
 import numpy as np
 import pybase16384 as b14
-from numpy import dtype
-from typing import Literal, Optional, List, Tuple, Dict, Union
+import torch
+import torchaudio
 from huggingface_hub import hf_hub_download
+from tqdm import tqdm
 
-from ..commons import text_utils, logger
 from .. import models
 from .. import trt_models
 from ..commons import constants
 from ..commons import norm
+from ..commons import text_utils, logger
+from ..commons.onnx2trt import convert_onnx_to_trt
 from ..commons.utils import RefineTextParams, InferCodeParams
 from ..models import processors
-from ..commons.onnx2trt import convert_onnx_to_trt
 
 
 class ChatTTSPlusPipeline:
@@ -56,6 +53,7 @@ class ChatTTSPlusPipeline:
     def load_models(self, **kwargs):
         self.models_dict = dict()
         coef = kwargs.get("coef", None)
+        self.infer_type = None
         if coef is None:
             coef_ = torch.rand(100)
             coef = b14.encode_to_string(coef_.numpy().astype(np.float32).tobytes())
@@ -112,6 +110,8 @@ class ChatTTSPlusPipeline:
                 self.models_dict[model_name] = model_
             else:
                 if self.cfg.MODELS[model_name]["infer_type"] == "pytorch":
+                    if not self.infer_type:
+                        self.infer_type = self.cfg.MODELS[model_name]["infer_type"]
                     model_ = getattr(models, self.cfg.MODELS[model_name]["name"])(
                         **self.cfg.MODELS[model_name]["kwargs"])
                     if model_name == "tokenizer":
@@ -120,6 +120,8 @@ class ChatTTSPlusPipeline:
                         model_.eval().to(self.device, dtype=self.dtype)
                         self.models_dict[model_name] = model_
                 elif self.cfg.MODELS[model_name]["infer_type"] == "trt":
+                    if not self.infer_type:
+                        self.infer_type = self.cfg.MODELS[model_name]["infer_type"]
                     model_ = getattr(trt_models, self.cfg.MODELS[model_name]["name"])(
                         **self.cfg.MODELS[model_name]["kwargs"])
                     model_.eval().to(self.device, dtype=self.dtype)
@@ -415,14 +417,20 @@ class ChatTTSPlusPipeline:
                     length = 0
                     pass_batch_count = 0
                 if kwargs.get("lora_path", None):
-                    from peft import PeftModel
-                    self.logger.info(f"load lora into gpt: {kwargs.get('lora_path')}")
-                    peft_model = PeftModel.from_pretrained(self.models_dict['gpt'].gpt,
-                                                           kwargs.get("lora_path"),
-                                                           device_map=self.device,
-                                                           torch_dtype=self.dtype)
-                    peft_model.config.use_cache = True
-                    self.models_dict['gpt'].gpt = peft_model
+                    if self.infer_type == "pytorch":
+                        from peft import PeftModel
+                        import copy
+                        self.logger.info(f"load lora into gpt: {kwargs.get('lora_path')}")
+                        self.models_dict['gpt'].gpt_org = self.models_dict['gpt'].gpt.cpu()
+                        peft_model = PeftModel.from_pretrained(copy.deepcopy(self.models_dict['gpt'].gpt),
+                                                               kwargs.get("lora_path"),
+                                                               device_map=self.device,
+                                                               torch_dtype=self.dtype)
+                        peft_model.config.use_cache = True
+                        peft_model = peft_model.merge_and_unload()
+                        self.models_dict['gpt'].gpt = peft_model
+                    else:
+                        self.logger.error("Lora only support pytorch Now!")
                 for result in self._infer_code(
                         text,
                         stream,
@@ -454,9 +462,11 @@ class ChatTTSPlusPipeline:
                     # Filter both rows and columns using slicing
                     yield new_wavs[:][:, keep_cols]
                 if kwargs.get("lora_path", None):
-                    self.logger.info("unload lora!")
-                    self.models_dict['gpt'].gpt.unload()
-                    self.models_dict['gpt'].gpt = self.models_dict['gpt'].gpt.base_model
+                    if self.infer_type == "pytorch":
+                        self.logger.info("unload lora !")
+                        del self.models_dict['gpt'].gpt
+                        torch.cuda.empty_cache()
+                        self.models_dict['gpt'].gpt = self.models_dict['gpt'].gpt_org.to(self.device)
 
     @torch.no_grad()
     def infer(self,

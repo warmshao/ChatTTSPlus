@@ -245,7 +245,6 @@ def main(cfg):
                     spk_emb = torch.nn.Parameter(spk_emb)
                     spk_emb.requires_grad_(True)
                     speaker_embeds[speaker] = spk_emb
-
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=cfg.DATA.train_bs, shuffle=True,
         num_workers=min(cfg.DATA.train_bs, 4), drop_last=True, collate_fn=BaseCollator()
