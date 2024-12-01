@@ -2,29 +2,26 @@
 # @Time    : 2024/9/22 18:06
 # @Project : ChatTTSPlus
 # @FileName: chattts_plus_pipeline.py
-import math
-import os.path
-import pdb
-import time
 import lzma
-import torch
-import torchaudio
-import vocos
-from tqdm import tqdm
+import os.path
+import time
+from typing import Union
+
 import numpy as np
 import pybase16384 as b14
-from numpy import dtype
-from typing import Literal, Optional, List, Tuple, Dict, Union
+import torch
+import torchaudio
 from huggingface_hub import hf_hub_download
+from tqdm import tqdm
 
-from ..commons import text_utils, logger
 from .. import models
 from .. import trt_models
 from ..commons import constants
 from ..commons import norm
+from ..commons import text_utils, logger
+from ..commons.onnx2trt import convert_onnx_to_trt
 from ..commons.utils import RefineTextParams, InferCodeParams
 from ..models import processors
-from ..commons.onnx2trt import convert_onnx_to_trt
 
 
 class ChatTTSPlusPipeline:
@@ -51,10 +48,12 @@ class ChatTTSPlusPipeline:
         self.logger.info(f"device: {str(self.device)}")
         self.logger.info(f"dtype: {str(self.dtype)}")
         self.load_models(**kwargs)
+        self.load_lora = False
 
     def load_models(self, **kwargs):
         self.models_dict = dict()
         coef = kwargs.get("coef", None)
+        self.infer_type = None
         if coef is None:
             coef_ = torch.rand(100)
             coef = b14.encode_to_string(coef_.numpy().astype(np.float32).tobytes())
@@ -111,6 +110,8 @@ class ChatTTSPlusPipeline:
                 self.models_dict[model_name] = model_
             else:
                 if self.cfg.MODELS[model_name]["infer_type"] == "pytorch":
+                    if not self.infer_type:
+                        self.infer_type = self.cfg.MODELS[model_name]["infer_type"]
                     model_ = getattr(models, self.cfg.MODELS[model_name]["name"])(
                         **self.cfg.MODELS[model_name]["kwargs"])
                     if model_name == "tokenizer":
@@ -119,6 +120,8 @@ class ChatTTSPlusPipeline:
                         model_.eval().to(self.device, dtype=self.dtype)
                         self.models_dict[model_name] = model_
                 elif self.cfg.MODELS[model_name]["infer_type"] == "trt":
+                    if not self.infer_type:
+                        self.infer_type = self.cfg.MODELS[model_name]["infer_type"]
                     model_ = getattr(trt_models, self.cfg.MODELS[model_name]["name"])(
                         **self.cfg.MODELS[model_name]["kwargs"])
                     model_.eval().to(self.device, dtype=self.dtype)
@@ -126,7 +129,7 @@ class ChatTTSPlusPipeline:
 
         spk_stat_path = os.path.join(constants.CHECKPOINT_DIR, "asset/spk_stat.pt")
         if not os.path.exists(spk_stat_path):
-            self.logger.warn(f"{spk_stat_path} not exists! Need to download from HuggingFace")
+            self.logger.warning(f"{spk_stat_path} not exists! Need to download from HuggingFace")
             hf_hub_download(repo_id="2Noise/ChatTTS", subfolder="asset",
                             filename=os.path.basename(spk_stat_path),
                             local_dir=constants.CHECKPOINT_DIR)
@@ -142,7 +145,7 @@ class ChatTTSPlusPipeline:
 
         normalizer_json = os.path.join(constants.CHECKPOINT_DIR, "homophones_map.json")
         if not os.path.exists(normalizer_json):
-            self.logger.warn(f"{normalizer_json} not exists! Need to download from HuggingFace")
+            self.logger.warning(f"{normalizer_json} not exists! Need to download from HuggingFace")
             hf_hub_download(repo_id="warmshao/ChatTTSPlus",
                             filename=os.path.basename(normalizer_json),
                             local_dir=constants.CHECKPOINT_DIR)
@@ -276,7 +279,8 @@ class ChatTTSPlusPipeline:
     def sample_audio_speaker(self, wav: Union[np.ndarray, torch.Tensor]) -> str:
         if isinstance(wav, np.ndarray):
             wav = torch.from_numpy(wav).to(self.device, dtype=self.dtype)
-        return self.models_dict["tokenizer"]._encode_prompt(self.models_dict["dvae_encode"](wav, "encode").squeeze_(0))
+        return self.models_dict["tokenizer"]._encode_prompt(
+            self.models_dict["dvae_encode"](wav[None], "encode").squeeze_(0))
 
     @torch.inference_mode()
     def _decode_to_wavs(
@@ -383,10 +387,10 @@ class ChatTTSPlusPipeline:
         self.logger.info("Finish text normalization: ")
         self.logger.info(text_in)
 
-        slice_size = 4
+        slice_size = kwargs.get("slice_size", 4)
         if len(text_in) > slice_size:
-            self.logger.warn(
-                f"len of text is {len(text_in)} > 4, only support max batchsize=4, so we need to slice to inference")
+            self.logger.warning(
+                f"len of text is {len(text_in)} > 4, only support max batch size is equal to 4, so we need to slice to inference")
 
         for ii in tqdm(range(0, len(text_in), slice_size)):
             text = text_in[ii:ii + slice_size].copy()
@@ -412,11 +416,26 @@ class ChatTTSPlusPipeline:
                 if stream:
                     length = 0
                     pass_batch_count = 0
+                if kwargs.get("lora_path", None):
+                    if self.infer_type == "pytorch":
+                        from peft import PeftModel
+                        import copy
+                        self.logger.info(f"load lora into gpt: {kwargs.get('lora_path')}")
+                        self.models_dict['gpt'].gpt_org = self.models_dict['gpt'].gpt.cpu()
+                        peft_model = PeftModel.from_pretrained(copy.deepcopy(self.models_dict['gpt'].gpt),
+                                                               kwargs.get("lora_path"),
+                                                               device_map=self.device,
+                                                               torch_dtype=self.dtype)
+                        peft_model.config.use_cache = True
+                        peft_model = peft_model.merge_and_unload()
+                        self.models_dict['gpt'].gpt = peft_model
+                    else:
+                        self.logger.error("Lora only support pytorch Now!")
                 for result in self._infer_code(
                         text,
                         stream,
                         use_decoder,
-                        params_infer_code,
+                        params_infer_code
                 ):
                     wavs = self._decode_to_wavs(
                         result.hiddens if use_decoder else result.ids,
@@ -442,6 +461,12 @@ class ChatTTSPlusPipeline:
                     keep_cols = np.sum(new_wavs != 0, axis=0) > 0
                     # Filter both rows and columns using slicing
                     yield new_wavs[:][:, keep_cols]
+                if kwargs.get("lora_path", None):
+                    if self.infer_type == "pytorch":
+                        self.logger.info("unload lora !")
+                        del self.models_dict['gpt'].gpt
+                        torch.cuda.empty_cache()
+                        self.models_dict['gpt'].gpt = self.models_dict['gpt'].gpt_org.to(self.device)
 
     @torch.no_grad()
     def infer(self,

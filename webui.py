@@ -1,5 +1,6 @@
 import os, sys
 import pdb
+import uuid
 
 if sys.platform == "darwin":
     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -11,6 +12,7 @@ import numpy as np
 import math
 import torch
 import subprocess
+import shutil
 
 from chattts_plus.pipelines.chattts_plus_pipeline import ChatTTSPlusPipeline
 from chattts_plus.commons import utils
@@ -41,6 +43,23 @@ def generate_seed():
 def update_spk_emb_path(file):
     spk_emb_path = file.name
     return spk_emb_path
+
+
+def update_spk_lora_path(files):
+    spk_lora_path = os.path.join(constants.CHECKPOINT_DIR, "lora", str(uuid.uuid4()))
+    os.makedirs(spk_lora_path, exist_ok=True)
+    is_valid = 0
+    for file in files:
+        if file.name.endswith(".json"):
+            shutil.copy(file.name, os.path.join(spk_lora_path, "adapter_config.json"))
+            is_valid += 1
+        elif file.name.endswith(".safetensors"):
+            shutil.copy(file.name, os.path.join(spk_lora_path, "adapter_model.safetensors"))
+            is_valid += 1
+    if is_valid == 2:
+        return spk_lora_path
+    else:
+        return ''
 
 
 def list_pt_files_in_dir(directory):
@@ -110,7 +129,8 @@ def generate_audio(
         stream,
         audio_seed_input,
         sample_text_input,
-        sample_audio_input
+        sample_audio_input,
+        spk_lora_path
 ):
     global pipe
 
@@ -136,7 +156,8 @@ def generate_audio(
             stream=stream,
             speaker_audio_path=sample_audio_input,
             speaker_audio_text=sample_text_input,
-            speaker_emb_path=spk_emb_path
+            speaker_emb_path=spk_emb_path,
+            lora_path=spk_lora_path
         )
         if stream:
             for gen in wav_gen:
@@ -162,6 +183,10 @@ def reset_spk_emb_path():
 
 # 清空 Sample Audio 和 Sample Text 的重置函数
 def reset_sample_inputs():
+    return None, ""  # 返回 None 清空音频，空字符串清空文本框
+
+
+def reset_lora_inputs():
     return None, ""  # 返回 None 清空音频，空字符串清空文本框
 
 
@@ -238,6 +263,22 @@ def main(args):
                     # 点击 Reset 按钮清空 Sample Audio 和 Sample Text
                     sample_reset.click(
                         reset_sample_inputs, inputs=None, outputs=[sample_audio_input, sample_text_input]
+                    )
+
+            with gr.Tab("Speaker Lora"):
+                with gr.Column():
+                    lora_files = gr.Files(label="Lora files: config.json and safetensors")
+                    spk_lora_path = gr.Textbox(
+                        label="Speaker Lora Path",
+                        max_lines=3,
+                        show_copy_button=True,
+                        interactive=True,
+                        scale=2,
+                    )
+                    lora_files.upload(update_spk_lora_path, inputs=lora_files, outputs=spk_lora_path)
+                    lora_reset = gr.Button("Reset", scale=1)
+                    lora_reset.click(
+                        reset_lora_inputs, inputs=None, outputs=[lora_files, spk_lora_path]
                     )
 
         with gr.Row(equal_height=True):
@@ -392,7 +433,8 @@ def main(args):
                     stream_mode_checkbox,
                     audio_seed_input,
                     sample_text_input,
-                    sample_audio_input
+                    sample_audio_input,
+                    spk_lora_path
                 ],
                 outputs=audio_output,
             )

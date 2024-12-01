@@ -13,7 +13,7 @@ ChatTTSPlus是[ChatTTS](https://github.com/2noise/ChatTTS)的扩展，增加使�
 - [x] 将ChatTTS的代码以我熟悉的方式重构。
 - [x] **使用TensorRT实现3倍以上的加速**, 在windows的3060显卡上从28token/s提升到110token/s。
 - [x] windows整合包，一键解压使用。
-- [ ] 使用Lora等技术实现声音克隆。
+- [x] 使用Lora等技术实现声音克隆。请参考 [声音克隆](assets/docs/voice_clone_ZH.md)
 - [ ] 使用剪枝、知识蒸馏等做模型压缩和加速，目标在移动端运行。
 
 ### 环境安装
@@ -36,8 +36,10 @@ The code is published under AGPLv3+ license.
 
 The model is published under CC BY-NC 4.0 license. It is intended for educational and research use, and should not be used for any commercial or illegal purposes. The authors do not guarantee the accuracy, completeness, or reliability of the information. The information and data used in this repo, are for academic and research purposes only. The data obtained from publicly available sources, and the authors do not claim any ownership or copyright over the data.
 
+### 免责声明
+我们不对代码库的任何非法使用承担任何责任. 请参阅您当地关于 DMCA (数字千年法案) 和其他相关法律法规.
+
 ### 关于我
 我是一个专注于做AIGC和LLM相关产品落地的算法工程师。有创业、合作或定制化需求欢迎加我的discord(warmshao)私信我，或者加我的微信：
 
-<img src="assets/wx/alex.jpg" alt="微信" width="300" height="400">
-<img src="assets/wx/img.png" alt="微信群" width="300" height="400">
+<img src="assets/wx/shipinhao.jpg" alt="微信" width="300" height="400">

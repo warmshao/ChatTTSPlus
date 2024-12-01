@@ -142,7 +142,7 @@ class Normalizer:
                 text = self._apply_half2full_map(text)
         invalid_characters = self._count_invalid_characters(text)
         if len(invalid_characters):
-            self.logger.warning(f"found invalid characters: {invalid_characters}")
+            self.logger.debug(f"found invalid characters: {invalid_characters}")
             text = self._apply_character_map(text)
         if do_homophone_replacement:
             arr, replaced_words = _fast_replace(
@@ -152,7 +152,7 @@ class Normalizer:
             if replaced_words:
                 text = arr.tobytes().decode(self.coding)
                 repl_res = ", ".join([f"{_[0]}->{_[1]}" for _ in replaced_words])
-                self.logger.info(f"replace homophones: {repl_res}")
+                self.logger.debug(f"replace homophones: {repl_res}")
         if len(invalid_characters):
             text = self.reject_pattern.sub("", text)
         return text

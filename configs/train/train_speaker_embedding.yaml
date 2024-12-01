@@ -1,0 +1,92 @@
+MODELS:
+  tokenizer:
+    name: "Tokenizer"
+    infer_type: "pytorch"
+    kwargs:
+      model_path: "checkpoints/asset/tokenizer.pt"
+  dvae_encode:
+    name: "DVAE"
+    infer_type: "pytorch"
+    kwargs:
+      model_path: "checkpoints/asset/DVAE_full.pt"
+      coef: ''
+      dim: 512
+      decoder_config:
+        idim: 512
+        odim: 512
+        hidden: 256
+        n_layer: 12
+        bn_dim: 128
+      encoder_config:
+        idim: 512
+        odim: 1024
+        hidden: 256
+        n_layer: 12
+        bn_dim: 128
+      vq_config:
+        dim: 1024
+        levels:
+          - 5
+          - 5
+          - 5
+          - 5
+        G: 2
+        R: 2
+  dvae_decode:
+    name: "DVAE"
+    infer_type: "pytorch"
+    kwargs:
+      model_path: "checkpoints/asset/Decoder.pt"
+      coef: ''
+      dim: 384
+      decoder_config:
+        idim: 384
+        odim: 384
+        hidden: 512
+        n_layer: 12
+        bn_dim: 128
+  gpt:
+    name: "GPT"
+    infer_type: "pytorch"
+    kwargs:
+      model_path: "checkpoints/asset/GPT.pt"
+      gpt_config:
+        hidden_size: 768
+        intermediate_size: 3072
+        num_attention_heads: 12
+        num_hidden_layers: 20
+        use_cache: False
+        max_position_embeddings: 4096
+        spk_emb_dim: 192
+        spk_KL: False
+        num_audio_tokens: 626
+        num_vq: 4
+
+DATA:
+  train_bs: 4
+  meta_infos:
+    - "data/xionger/slicer_opt.list"
+  sample_rate: 24000
+  num_vq: 4
+
+solver:
+  gradient_accumulation_steps: 1
+  mixed_precision: 'fp16'
+  gradient_checkpointing: false
+  max_train_steps: 40000
+  max_grad_norm: 1.0
+  # lr
+  learning_rate: 1e-2
+  scale_lr: false
+  lr_warmup_steps: 10
+  lr_scheduler: 'constant'
+
+  # optimizer
+  use_8bit_adam: false
+
+weight_dtype: 'fp16'
+output_dir: './outputs'
+exp_name: "xionger_speaker_emb"
+speaker_embeds_path: "outputs/xionger_speaker_emb-1732894509.8451874/checkpoints/step-4000/speaker_embeds.pkl"
+checkpointing_steps: 100
+use_empty_speaker: false
