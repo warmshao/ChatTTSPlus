@@ -34,8 +34,13 @@ xionger|E:\my_projects\ChatTTSPlus\data\xionger\slicer_opt\vocal_3.WAV_10.wav_00
 * Trained speaker embeddings will be saved in the `outputs` folder, like `outputs/xionger_speaker_emb-1732931630.7137222/checkpoints/step-1/xionger.pt`
 * You can visualize training logs using tensorboard, e.g., `tensorboad --logdir=outputs/xionger_speaker_emb-1732931630.7137222/tf_logs`
 
+#### Some Tips
+* For better results, it's best to prepare more than 1 hour of audio. I tried training lora with 1 minute of audio, but it was prone to overfitting and the results were mediocre.
+* Don't train for too long, otherwise it can easily overfit. When I trained with 1 hour of Lei Jun's audio, it converged between 2000 to 3000 steps.
+* If you understand lora training, you can try adjusting the parameters in the config file.
+
 ### Model Inference
 * Launch webui: `python webui.py --cfg configs/infer/chattts_plus.yaml`
 * Refer to the following video tutorial for usage:
 
-<video src="https://github.com/user-attachments/assets/bd2c1e48-6339-4ad7-bcfa-ed008c992594" controls="controls" width="500" height="300">Your browser doesn't support playing this video!</video>
+<video src="https://github.com/user-attachments/assets/b1590f92-e86b-4dc7-b304-9546a9d8a30e" controls="controls" width="500" height="300">Your browser doesn't support playing this video!</video>
