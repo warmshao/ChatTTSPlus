@@ -398,7 +398,7 @@ def main(args):
             audio_output = gr.Audio(
                 label="Output Audio",
                 value=None,
-                format="mp3" if not stream else "wav",
+                format="wav",
                 autoplay=autoplay,
                 streaming=stream,
                 interactive=False,
