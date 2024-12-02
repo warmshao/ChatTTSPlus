@@ -326,7 +326,7 @@ def main(args):
         with gr.Row(equal_height=True):
             audio_prompt = gr.Text(
                 interactive=True,
-                value="[speed_5]",
+                value="[speed_4]",
                 label="audio_prompt"
             )
             audio_temperature_slider = gr.Number(
@@ -398,7 +398,7 @@ def main(args):
             audio_output = gr.Audio(
                 label="Output Audio",
                 value=None,
-                format="mp3" if not stream else "wav",
+                format="wav",
                 autoplay=autoplay,
                 streaming=stream,
                 interactive=False,
