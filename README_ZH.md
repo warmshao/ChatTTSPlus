@@ -8,6 +8,9 @@ ChatTTSPlus是[ChatTTS](https://github.com/2noise/ChatTTS)的扩展，增加使�
 
 ### 基于ChatTTSPlus做的有趣的demo
 * NotebookLM播客: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1jz8HPdRe_igoNjMSv0RaTn3l2c3seYFT?usp=sharing)
+，使用ChatTTS把 `AnimateAnyone` 这篇文章变成播客。
+
+   <video src="https://github.com/user-attachments/assets/82afa5de-1bf2-404a-ab10-06d52b16a8f9" controls="controls" width="300" height="500">Your browser does not support playing this video!</video>
 
 ### 新增功能
 - [x] 将ChatTTS的代码以我熟悉的方式重构。

@@ -7,8 +7,10 @@ ChatTTSPlus is an extension of [ChatTTS](https://github.com/2noise/ChatTTS), add
 **If you find this project useful, please give it a star! ✨✨**
 
 ### Some fun demos based on ChatTTSPlus
-* NotebookLM podcast: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1jz8HPdRe_igoNjMSv0RaTn3l2c3seYFT?usp=sharing)
+* NotebookLM podcast: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1jz8HPdRe_igoNjMSv0RaTn3l2c3seYFT?usp=sharing).
+Use ChatTTSPlus to turn the `AnimateAnyone` paper into a podcast.
 
+   <video src="https://github.com/user-attachments/assets/82afa5de-1bf2-404a-ab10-06d52b16a8f9" controls="controls" width="300" height="500">Your browser does not support playing this video!</video>
 
 ### New Features
 - [x] Refactored ChatTTS code in a way I'm familiar with.
