@@ -65,7 +65,7 @@ MODELS:
 DATA:
   train_bs: 4
   meta_infos:
-    - "data/lyl2/asr_opt/denoise_opt.list"
+    - "data/leijun/asr_opt/denoise_opt_new.list"
   sample_rate: 24000
   num_vq: 4
 
