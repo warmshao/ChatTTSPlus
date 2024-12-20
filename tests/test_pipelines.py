@@ -34,11 +34,11 @@ def test_chattts_plus_pipeline():
         temperature=0.7,
         max_new_token=384
     )
-    infer_text = ["他娘的，我们针对对话式任务进行了优化，能够实现自然且富有表现力的合成语音"]
+    infer_text = ["我们针对对话式任务进行了优化，能够实现自然且富有表现力的合成语音"]
     t0 = time.time()
     # leijun: outputs/leijun_lora-1732802535.8597126/checkpoints/step-2000
     # xionger: outputs/xionger_lora-1732809910.2932503/checkpoints/step-600
-    lora_path = "outputs/liyunlong_lora-1733020022.0272408/checkpoints/step-2200"
+    lora_path = "outputs/leijun_lora-1734532984.1128285/checkpoints/step-2000"
     pipe_res_gen = pipeline.infer(
         infer_text,
         params_refine_text=params_refine_text,
