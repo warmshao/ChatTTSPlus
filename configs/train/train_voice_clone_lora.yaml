@@ -78,9 +78,9 @@ LORA:
     - "v_proj"
     - "k_proj"
     - "o_proj"
-    - "gate_proj"
-    - "up_proj"
-    - "down_proj"
+#    - "gate_proj"
+#    - "up_proj"
+#    - "down_proj"
 
 solver:
   gradient_accumulation_steps: 1
@@ -103,7 +103,7 @@ solver:
 
 weight_dtype: 'fp16'
 output_dir: './outputs'
-exp_name: "liyunlong_lora"
+exp_name: "leijun_lora"
 lora_model_path: ""
 checkpointing_steps: 100
 use_empty_speaker: true

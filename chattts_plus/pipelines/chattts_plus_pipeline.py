@@ -4,6 +4,7 @@
 # @FileName: chattts_plus_pipeline.py
 import lzma
 import os.path
+import pdb
 import time
 from typing import Union
 
@@ -428,7 +429,7 @@ class ChatTTSPlusPipeline:
                                                                torch_dtype=self.dtype)
                         peft_model.config.use_cache = True
                         peft_model = peft_model.merge_and_unload()
-                        self.models_dict['gpt'].gpt = peft_model
+                        self.models_dict['gpt'].gpt = peft_model.to(self.device, dtype=self.dtype)
                     else:
                         self.logger.error("Lora only support pytorch Now!")
                 for result in self._infer_code(
@@ -466,7 +467,7 @@ class ChatTTSPlusPipeline:
                         self.logger.info("unload lora !")
                         del self.models_dict['gpt'].gpt
                         torch.cuda.empty_cache()
-                        self.models_dict['gpt'].gpt = self.models_dict['gpt'].gpt_org.to(self.device)
+                        self.models_dict['gpt'].gpt = self.models_dict['gpt'].gpt_org.to(self.device, dtype=self.dtype)
 
     @torch.no_grad()
     def infer(self,
