@@ -41,8 +41,3 @@ The model is published under CC BY-NC 4.0 license. It is intended for educationa
 
 ### 免责声明
 我们不对代码库的任何非法使用承担任何责任. 请参阅您当地关于 DMCA (数字千年法案) 和其他相关法律法规.
-
-### 关于我
-我是一个专注于做AIGC和LLM相关产品落地的算法工程师。有创业、合作或定制化需求欢迎加我的discord(warmshao)私信我，或者加我的微信：
-
-<img src="assets/wx/shipinhao.jpg" alt="微信" width="300" height="340">

@@ -41,8 +41,3 @@ The model is published under the CC BY-NC 4.0 license. It is intended for educat
 
 ### Disclaimer
 We do not hold any responsibility for any illegal usage of the codebase. Please refer to your local laws about DMCA and other related laws.
-
-### About Me
-I'm an algorithm engineer focused on implementing AIGC and LLM-related products. If you have any needs for entrepreneurship, collaboration, or customization, feel free to add me on Discord (warmshao) or on WeChat:
-
-<img src="assets/wx/shipinhao.jpg" alt="微信" width="300" height="340">
