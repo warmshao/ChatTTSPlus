@@ -63,9 +63,9 @@ MODELS:
         num_vq: 4
 
 DATA:
-  train_bs: 1
+  train_bs: 4
   meta_infos:
-    - "/mnt/e/iwork/AI_voide/MassTTS-main/MassTTS-main/yuanyuan.list"
+    - "data/leijun/asr_opt/denoise_opt_new.list"
   sample_rate: 24000
   num_vq: 4
 
@@ -83,9 +83,9 @@ LORA:
 #    - "down_proj"
 
 solver:
-  gradient_accumulation_steps: 2
-  mixed_precision: 'no'
-  gradient_checkpointing: true
+  gradient_accumulation_steps: 1
+  mixed_precision: 'fp16'
+  gradient_checkpointing: false
   max_train_steps: 4000
   max_grad_norm: 1.0
   # lr
