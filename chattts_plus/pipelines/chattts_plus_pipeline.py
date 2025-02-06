@@ -502,7 +502,48 @@ class ChatTTSPlusPipeline:
             speaker_emb_path = kwargs.get("speaker_emb_path", None)
             assert os.path.exists(speaker_emb_path), f"speaker_emb_path {speaker_emb_path} not exists!"
             self.logger.info(f"loading speaker_emb from {speaker_emb_path}")
-            speaker_emb = torch.load(speaker_emb_path)
+            try:
+                # 尝试不同的加载方式
+                try:
+                    # 首先尝试使用 weights_only=True
+                    speaker_emb = torch.load(speaker_emb_path, weights_only=True, map_location='cpu')
+                except Exception as e1:
+                    try:
+                        # 如果失败，尝试使用 safetensors
+                        if speaker_emb_path.endswith('.safetensors'):
+                            import safetensors.torch
+                            speaker_emb = safetensors.torch.load_file(speaker_emb_path)
+                            if isinstance(speaker_emb, dict):
+                                speaker_emb = next(iter(speaker_emb.values()))
+                        else:
+                            # 最后尝试使用传统方式加载
+                            speaker_emb = torch.load(speaker_emb_path, weights_only=False, map_location='cpu')
+                    except Exception as e2:
+                        raise Exception(f"所有加载方式都失败: \n{str(e1)}\n{str(e2)}")
+                
+                # 验证和处理加载的数据
+                if isinstance(speaker_emb, dict):
+                    # 如果是字典，尝试获取第一个值
+                    speaker_emb = next(iter(speaker_emb.values()))
+                
+                if not isinstance(speaker_emb, torch.Tensor):
+                    raise ValueError(f"加载的 speaker embedding 不是 tensor 类型: {type(speaker_emb)}")
+                
+                # 确保维度正确
+                if speaker_emb.dim() != 2 or speaker_emb.size(0) != 1:
+                    speaker_emb = speaker_emb.unsqueeze(0)
+                
+                # 确保数据类型正确
+                speaker_emb = speaker_emb.to(dtype=self.dtype)
+                
+            except Exception as e:
+                self.logger.warning(f"加载 speaker embedding 时出错: {str(e)}")
+                self.logger.warning(f"使用空的 speaker embedding")
+                # 使用空的 speaker embedding 作为后备
+                speaker_emb = torch.zeros((1, self.cfg.spk_emb_dim), 
+                                        dtype=self.dtype, 
+                                        device=self.device)
+            
             params_infer_code.spk_emb = speaker_emb
         else:
             self.logger.info("speaker_emb is None, random select a speaker!")

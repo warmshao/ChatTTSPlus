@@ -29,6 +29,16 @@ class Tokenizer:
         )
         self._tokenizer = tokenizer
 
+        # 设置特殊token
+        self._tokenizer.eos_token = '[SEP]'  # 使用BERT的默认结束符
+        self._tokenizer.pad_token = '[PAD]'  # 使用BERT的默认填充符
+        
+        # 获取或设置对应的token id
+        if not hasattr(self._tokenizer, 'pad_token_id'):
+            self._tokenizer.pad_token_id = self._tokenizer.convert_tokens_to_ids('[PAD]')
+        if not hasattr(self._tokenizer, 'eos_token_id'):    
+            self._tokenizer.eos_token_id = self._tokenizer.convert_tokens_to_ids('[SEP]')
+
         self.len = len(tokenizer)
         self.spk_emb_ids = tokenizer.convert_tokens_to_ids("[spk_emb]")
         self.break_0_ids = tokenizer.convert_tokens_to_ids("[break_0]")
